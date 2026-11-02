@@ -20,6 +20,7 @@ def settings(tmp_path: Path) -> Settings:
         log_level="WARNING",
         seed_demo_data=True,
         checkpoint_sqlite_path=str(tmp_path / "checkpoints.db"),
+        upload_dir=str(tmp_path / "uploads"),
     )
     database = Database(settings)
     Base.metadata.create_all(database.engine)
