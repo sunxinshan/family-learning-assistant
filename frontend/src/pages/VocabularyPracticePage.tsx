@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { practiceApi } from '../api/mockApi'
+import { api } from '../api'
 import { PracticeLayout } from '../features/practice/PracticeLayout'
 import { Badge, Button, EmptyState } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
@@ -56,7 +56,7 @@ export const VocabularyPracticePage = () => {
       setAttempt(null)
       return
     }
-    const nextAttempt = practiceApi.startOrResume(taskId, currentUser.id)
+    const nextAttempt = api.practice.startOrResume(taskId, currentUser.id)
     setAttempt(nextAttempt)
     setActiveIndex(nextAttempt.currentIndex)
     setShowResults(false)
@@ -163,7 +163,7 @@ export const VocabularyPracticePage = () => {
     if (!selected || busy) return
     setBusy(true)
     try {
-      const result = await practiceApi.submitAnswer(task.id, currentUser.id, {
+      const result = await api.practice.submitAnswer(task.id, currentUser.id, {
         prompt: entry.word,
         expected: entry.meanings[0],
         given: selected,
@@ -191,7 +191,7 @@ export const VocabularyPracticePage = () => {
   }
 
   const exit = () => {
-    practiceApi.saveExit(attempt.id)
+    api.practice.saveExit(attempt.id)
     navigate(`/tasks/${task.id}`)
   }
 

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { taskApi } from '../api/mockApi'
+import { api } from '../api'
 import {
   Badge,
   Button,
@@ -180,7 +180,7 @@ export const TaskCreatePage = () => {
     setSaving(true)
     setError('')
     try {
-      const task = await taskApi.create(currentUser.id, {
+      const task = await api.task.create(currentUser.id, {
         name: form.name,
         type: form.type,
         mode: form.mode,

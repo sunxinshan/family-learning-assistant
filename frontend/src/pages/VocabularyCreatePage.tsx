@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useRef, useState, type ChangeEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { vocabularyApi } from '../api/mockApi'
+import { api } from '../api'
 import {
   Button,
   Field,
@@ -157,8 +157,8 @@ export const VocabularyCreatePage = () => {
       }
       const library =
         visibility === 'public'
-          ? await vocabularyApi.createPublic(currentUser.id, draft)
-          : await vocabularyApi.create(currentUser.id, draft)
+          ? await api.vocabulary.createPublic(currentUser.id, draft)
+          : await api.vocabulary.create(currentUser.id, draft)
       refresh()
       showToast(
         visibility === 'public' ? '公共词库草稿已创建' : '个人词库已创建',

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { adminApi, vocabularyApi } from '../api/mockApi'
+import { api } from '../api'
 import {
   Badge,
   Button,
@@ -43,16 +43,16 @@ export const AdminPage = () => {
   const [busy, setBusy] = useState(false)
 
   const users = useMemo<AdminUser[]>(
-    () => (currentUser ? adminApi.listUsers(currentUser.id) : []),
+    () => (currentUser ? api.admin.listUsers(currentUser.id) : []),
     [currentUser, publicLibraries],
   )
   const logs = useMemo(
-    () => (currentUser ? adminApi.listLogs(currentUser.id) : []),
+    () => (currentUser ? api.admin.listLogs(currentUser.id) : []),
     [currentUser, publicLibraries],
   )
   const stats = useMemo<LearningStats | null>(() => {
     if (!currentUser || !statsUser) return null
-    return adminApi.getUserStats(currentUser.id, statsUser.id)
+    return api.admin.getUserStats(currentUser.id, statsUser.id)
   }, [currentUser, statsUser, publicLibraries])
 
   if (!currentUser || currentUser.role !== 'admin') return null
@@ -60,7 +60,7 @@ export const AdminPage = () => {
   const togglePublish = async (library: Vocabulary) => {
     setBusy(true)
     try {
-      await vocabularyApi.togglePublish(currentUser.id, library.id)
+      await api.vocabulary.togglePublish(currentUser.id, library.id)
       refresh()
       showToast(library.published ? '公共词库已撤回' : '公共词库已发布', 'success')
     } catch (cause) {
@@ -74,7 +74,7 @@ export const AdminPage = () => {
     if (!deleteLibrary) return
     setBusy(true)
     try {
-      await vocabularyApi.removePublic(currentUser.id, deleteLibrary.id)
+      await api.vocabulary.removePublic(currentUser.id, deleteLibrary.id)
       refresh()
       setDeleteLibrary(null)
       showToast('公共词库已删除', 'success')
@@ -89,7 +89,7 @@ export const AdminPage = () => {
     if (!resetUser) return
     setBusy(true)
     try {
-      const password = await adminApi.resetPassword(currentUser.id, resetUser.id)
+      const password = await api.admin.resetPassword(currentUser.id, resetUser.id)
       setPasswordResult({ user: resetUser.nickname, password })
       setResetUser(null)
       refresh()

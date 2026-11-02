@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { taskApi } from '../api/mockApi'
+import { api } from '../api'
 import {
   Badge,
   Button,
@@ -89,7 +89,7 @@ export const TaskDetailPage = () => {
     setBusy(true)
     setError('')
     try {
-      await taskApi.update(currentUser.id, task.id, {
+      await api.task.update(currentUser.id, task.id, {
         name: name.trim(),
         ...(fixed
           ? {}
@@ -115,7 +115,7 @@ export const TaskDetailPage = () => {
   const removeTask = async () => {
     setBusy(true)
     try {
-      await taskApi.remove(currentUser.id, task.id)
+      await api.task.remove(currentUser.id, task.id)
       refresh()
       showToast('任务及关联练习记录已删除', 'success')
       navigate('/tasks', { replace: true })

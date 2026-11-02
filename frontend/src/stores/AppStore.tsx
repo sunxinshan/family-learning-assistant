@@ -5,9 +5,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { learningApi, taskApi, vocabularyApi } from '../api/mockApi'
+import { api } from '../api'
 import { initializeStorage, resetStorage } from '../api/storage'
-import { authApi } from '../api/mockApi'
 import type {
   LearningTask,
   PracticeAttempt,
@@ -19,7 +18,7 @@ import { AppStoreContext, type AppStoreValue, type ToastState } from './AppStore
 initializeStorage()
 
 export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => authApi.current())
+  const [currentUser, setCurrentUser] = useState<User | null>(() => api.auth.current())
   const [tasks, setTasks] = useState<LearningTask[]>([])
   const [libraries, setLibraries] = useState<Vocabulary[]>([])
   const [publicLibraries, setPublicLibraries] = useState<Vocabulary[]>([])
@@ -36,10 +35,10 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false)
       return
     }
-    setTasks(taskApi.list(currentUser.id))
-    setLibraries(vocabularyApi.listMine(currentUser.id))
-    setPublicLibraries(vocabularyApi.listPublic(currentUser.id))
-    setPractices(learningApi.listAttempts(currentUser.id))
+    setTasks(api.task.list(currentUser.id))
+    setLibraries(api.vocabulary.listMine(currentUser.id))
+    setPublicLibraries(api.vocabulary.listPublic(currentUser.id))
+    setPractices(api.learning.listAttempts(currentUser.id))
     setIsLoading(false)
   }, [currentUser])
 
@@ -64,19 +63,19 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   const login = useCallback(async (nickname: string, password: string) => {
-    const user = await authApi.login(nickname, password)
+    const user = await api.auth.login(nickname, password)
     setCurrentUser(user)
     return user
   }, [])
 
   const register = useCallback(async (nickname: string, password: string) => {
-    const user = await authApi.register(nickname, password)
+    const user = await api.auth.register(nickname, password)
     setCurrentUser(user)
     return user
   }, [])
 
   const logout = useCallback(() => {
-    authApi.logout()
+    api.auth.logout()
     setCurrentUser(null)
   }, [])
 

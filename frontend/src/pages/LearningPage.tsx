@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { learningApi } from '../api/mockApi'
+import { api } from '../api'
 import { Badge, EmptyState, PageHeader, ProgressBar } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
 import type { TaskType } from '../types/domain'
@@ -24,7 +24,7 @@ export const LearningPage = () => {
   const [filter, setFilter] = useState<Filter>('all')
 
   const stats = useMemo(
-    () => (currentUser ? learningApi.getStats(currentUser.id) : null),
+    () => (currentUser ? api.learning.getStats(currentUser.id) : null),
     [currentUser, practices],
   )
 

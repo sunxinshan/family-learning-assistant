@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { vocabularyApi } from '../api/mockApi'
+import { api } from '../api'
 import {
   Badge,
   Button,
@@ -113,7 +113,7 @@ export const VocabularyPage = () => {
     if (!currentUser) return
     setCopyingId(library.id)
     try {
-      const copy = await vocabularyApi.copy(currentUser.id, library.id)
+      const copy = await api.vocabulary.copy(currentUser.id, library.id)
       refresh()
       showToast('已复制为独立个人词库', 'success')
       navigate(`/vocabulary/${copy.id}`)

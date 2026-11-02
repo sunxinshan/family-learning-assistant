@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { vocabularyApi } from '../api/mockApi'
+import { api } from '../api'
 import {
   Badge,
   Button,
@@ -117,7 +117,7 @@ export const VocabularyDetailPage = () => {
     setBusy(true)
     setMetadataError('')
     try {
-      await vocabularyApi.updateMetadata(currentUser.id, library.id, metadataDraft)
+      await api.vocabulary.updateMetadata(currentUser.id, library.id, metadataDraft)
       refresh()
       setMetadataOpen(false)
       showToast('词库信息已更新', 'success')
@@ -163,9 +163,9 @@ export const VocabularyDetailPage = () => {
     setError('')
     try {
       if (isNew) {
-        await vocabularyApi.insertEntries(currentUser.id, library.id, [normalized])
+        await api.vocabulary.insertEntries(currentUser.id, library.id, [normalized])
       } else {
-        await vocabularyApi.updateEntry(currentUser.id, library.id, normalized)
+        await api.vocabulary.updateEntry(currentUser.id, library.id, normalized)
       }
       refresh()
       setEntryDraft(null)
@@ -180,7 +180,7 @@ export const VocabularyDetailPage = () => {
   const removeSelected = async () => {
     setBusy(true)
     try {
-      await vocabularyApi.removeEntries(currentUser.id, library.id, selected)
+      await api.vocabulary.removeEntries(currentUser.id, library.id, selected)
       refresh()
       setSelected([])
       setDeleteOpen(false)
@@ -197,7 +197,7 @@ export const VocabularyDetailPage = () => {
     setBusy(true)
     try {
       for (const entry of selectedEntries) {
-        await vocabularyApi.updateEntry(currentUser.id, library.id, {
+        await api.vocabulary.updateEntry(currentUser.id, library.id, {
           ...entry,
           partOfSpeech: batchPartOfSpeech.trim(),
         })
@@ -216,7 +216,7 @@ export const VocabularyDetailPage = () => {
   const copyLibrary = async () => {
     setBusy(true)
     try {
-      const copy = await vocabularyApi.copy(currentUser.id, library.id)
+      const copy = await api.vocabulary.copy(currentUser.id, library.id)
       refresh()
       showToast('公共词库已复制为个人副本', 'success')
       navigate(`/vocabulary/${copy.id}`)

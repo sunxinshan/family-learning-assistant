@@ -19,8 +19,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { conversationApi } from '../api/mockApi'
-import { mockAgent } from '../api/mockAgent'
+import { api } from '../api'
 import { AgentAvatar, ChatMessageItem } from '../features/conversation/MessageComponents'
 import { Badge, Button, IconButton, Modal } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
@@ -52,7 +51,7 @@ export const ChatPage = () => {
 
   useEffect(() => {
     if (!currentUser) return
-    const conversation = conversationApi.get(currentUser.id)
+    const conversation = api.conversation.get(currentUser.id)
     setMessages(conversation.messages)
     messagesRef.current = conversation.messages
     setHydrated(true)
@@ -61,7 +60,7 @@ export const ChatPage = () => {
 
   useEffect(() => {
     if (!hydrated || !currentUser || mountedUserIdRef.current !== currentUser.id) return
-    conversationApi.save(currentUser.id, messages)
+    api.conversation.save(currentUser.id, messages)
   }, [messages, hydrated, currentUser])
 
   useEffect(() => {
@@ -161,7 +160,7 @@ export const ChatPage = () => {
       setBusy(true)
       setBusyStatus('正在理解你的需求')
       executionMessagesRef.current.clear()
-      await mockAgent.run(payload, currentUser.id, handleEvent)
+      await api.agent.run(payload, currentUser.id, handleEvent)
       refresh()
       setBusy(false)
     },
@@ -221,7 +220,7 @@ export const ChatPage = () => {
     setBusy(true)
     setBusyStatus(action.stage === 1 ? '正在校验删除条件' : '正在执行已确认的操作')
     executionMessagesRef.current.clear()
-    await mockAgent.confirm(action, currentUser.id, handleEvent)
+    await api.agent.confirm(action, currentUser.id, handleEvent)
     refresh()
     setBusy(false)
   }
@@ -250,7 +249,7 @@ export const ChatPage = () => {
 
   const handleClear = () => {
     if (!currentUser) return
-    conversationApi.clear(currentUser.id)
+    api.conversation.clear(currentUser.id)
     setMessages([])
     messagesRef.current = []
     setClearOpen(false)

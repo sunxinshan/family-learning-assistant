@@ -1,16 +1,20 @@
 # 家庭学习助手
 
-以 Agent 对话为核心入口的家庭学习助手。当前仓库处于 Phase 0：完成可运行的前端产品原型，暂不包含正式后端。
+以 Agent 对话为核心入口的家庭学习助手。当前仓库处于 **正式开发 Phase 0**：前端原型可运行，后端基础设施骨架已建立，尚未实现正式业务模块。
 
 ## 项目结构
 
 ```text
 .
-├── docs/       # 总体架构、前端设计方案和实施记录
-└── frontend/   # React + TypeScript + Vite 前端原型
+├── docs/       # 总体架构、原型、审查、决策和实施计划
+├── frontend/   # React + TypeScript + Vite 前端
+├── backend/    # Python + FastAPI Phase 0 基础设施
+└── .github/    # CI
 ```
 
 ## 快速启动
+
+### 前端
 
 ```bash
 cd frontend
@@ -24,25 +28,35 @@ npm run dev
 - 管理员：`Admin` / `admin123`
 - 管理员：`Manager` / `manager123`
 
-详细说明见 [frontend/README.md](frontend/README.md)。
+### 后端
 
-## 产品范围
+```bash
+cd backend
+cp .env.example .env
+uv sync --dev
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-- ChatGPT 式 Agent 对话与结构化操作确认。
-- 学习任务的页面创建、Agent 创建、修改和两阶段删除；任务数量由勾选词条决定。
-- 页面上传 Excel/CSV、真实解析和 Excel 模板下载。
-- 词库按语文、英语学科分类，不再要求填写分类字段。
-- 任务支持个人词库或已发布公共词库，勾选与 `2-10`、`4,8` 序号输入同步。
-- 听写支持线上/线下、自动/手动播放、朗读次数、自动播放倒计时和拼音/音标/释义提示。
-- Agent 对话中的三个常用入口固定显示；任务与导入词库确认卡片支持直接修改全部页面可编辑配置。
-- 个人词库、公共词库复制、元信息编辑、自定义标签和批量维护。
-- 独立的词汇练习与听写练习。
-- 学习记录、正确率、错题和管理员只读学习概况。
-- 管理员用户管理、公共词库发布和操作日志。
-- 桌面与移动端响应式布局。
+健康检查：
+
+- `http://127.0.0.1:8000/api/v1/health/live`
+- `http://127.0.0.1:8000/api/v1/health/ready`
+
+## 当前状态
+
+- 前端原型：完整可操作，仍使用 Mock API + LocalStorage。
+- 后端 Phase 0：配置、日志、统一错误、请求 ID、数据库连接、Alembic、pytest、CI 和健康检查已完成。
+- 正式业务模块：尚未开始。
+- 前端 API 边界：已整理为统一 `frontend/src/api/index.ts`，仍由 Mock adapter 提供实现，后续可替换为 HTTP adapter。
 
 ## 文档
 
 - [系统架构与开发设计文档 V1.0](docs/家庭学习助手系统架构与开发设计文档%20V1.0.md)
 - [前端原型设计方案](docs/前端原型设计方案.md)
 - [原型开发实施记录](docs/原型开发实施记录.md)
+- [正式开发实施计划](docs/正式开发实施计划.md)
+- [架构审查问题清单](docs/架构审查问题清单.md)
+- [开发任务拆分清单](docs/开发任务拆分清单.md)
+- [正式开发决策记录](docs/正式开发决策记录.md)
+- [Phase 0 实施记录](docs/阶段0实施记录.md)
