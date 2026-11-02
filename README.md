@@ -7,7 +7,7 @@
 - Frontend：React 19 + TypeScript + Vite + Playwright。
 - Backend：Python 3.12 + FastAPI + SQLAlchemy + Alembic + LangGraph。
 - Database：MySQL 8.4（生产验证）/ SQLite（开发测试）。
-- Agent：OpenAI-compatible Adapter + Mock Adapter、LangGraph Interrupt/Resume、MySQL Checkpointer、SSE。
+- Agent：DeepSeek `deepseek-v4-flash`（OpenAI-compatible API）、LangGraph Interrupt/Resume、MySQL Checkpointer、SSE。
 
 ## 快速启动
 

@@ -35,6 +35,10 @@ services:
       FLA_CHECKPOINT_BACKEND: mysql
       FLA_CHECKPOINT_URL: mysql://${MYSQL_USER:-fla}:${MYSQL_PASSWORD:-change-database-password}@mysql:3306/familylearning_checkpoints?charset=utf8mb4
       FLA_PROMPT_DIR: /app/app/modules/agent/prompts
+      FLA_LLM_PROVIDER: openai_compatible
+      FLA_LLM_BASE_URL: https://api.deepseek.com/v1
+      FLA_LLM_API_KEY: ${DEEPSEEK_API_KEY:?set DEEPSEEK_API_KEY in .env}
+      FLA_LLM_MODEL: ${FLA_LLM_MODEL:-deepseek-v4-flash}
       FLA_UPLOAD_DIR: /app/data/uploads
       FLA_CORS_ORIGINS: '["http://localhost:8080"]'
     volumes:

@@ -1,1 +1,4 @@
 .workbuddy/
+.env
+.env.*
+!.env.example
