@@ -42,6 +42,7 @@ export const VocabularyPracticePage = () => {
   const navigate = useNavigate()
   const { tasks, currentUser, refresh, showToast } = useAppStore()
   const task = tasks.find((candidate) => candidate.id === taskId)
+  const taskExists = tasks.some((candidate) => candidate.id === taskId)
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [selected, setSelected] = useState('')
@@ -51,7 +52,10 @@ export const VocabularyPracticePage = () => {
   const startedAtRef = useRef(performance.now())
 
   useEffect(() => {
-    if (!taskId || !currentUser) return
+    if (!taskId || !currentUser || !taskExists) {
+      setAttempt(null)
+      return
+    }
     const nextAttempt = practiceApi.startOrResume(taskId, currentUser.id)
     setAttempt(nextAttempt)
     setActiveIndex(nextAttempt.currentIndex)
@@ -59,7 +63,7 @@ export const VocabularyPracticePage = () => {
     setFeedback(null)
     setSelected('')
     startedAtRef.current = performance.now()
-  }, [taskId, currentUser])
+  }, [taskId, currentUser, taskExists])
 
   const entry = task?.snapshot[activeIndex]
   const options = useMemo(

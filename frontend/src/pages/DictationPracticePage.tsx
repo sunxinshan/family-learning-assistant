@@ -37,6 +37,7 @@ export const DictationPracticePage = () => {
   const navigate = useNavigate()
   const { tasks, currentUser, refresh, showToast } = useAppStore()
   const task = tasks.find((candidate) => candidate.id === taskId)
+  const taskExists = tasks.some((candidate) => candidate.id === taskId)
   const config = task?.config.dictation ?? defaultDictationConfig
   const isOffline = config.mode === 'offline'
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null)
@@ -55,7 +56,10 @@ export const DictationPracticePage = () => {
   const offlineEntry = task?.snapshot[offlineIndex]
 
   useEffect(() => {
-    if (!taskId || !currentUser) return
+    if (!taskId || !currentUser || !taskExists) {
+      setAttempt(null)
+      return
+    }
     const nextAttempt = practiceApi.startOrResume(taskId, currentUser.id)
     setAttempt(nextAttempt)
     setActiveIndex(nextAttempt.currentIndex)
@@ -66,7 +70,7 @@ export const DictationPracticePage = () => {
     setFeedback(null)
     setAnswer('')
     startedAtRef.current = performance.now()
-  }, [taskId, currentUser])
+  }, [taskId, currentUser, taskExists])
 
   const speakWord = useCallback(
     (word: string) => {
