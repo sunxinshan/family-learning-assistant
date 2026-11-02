@@ -44,20 +44,21 @@ class TaskPracticeDefinition:
     entries: list[PracticeEntry]
 
 
-def task_to_out(task: LearningTask) -> TaskOut:
-    snapshot = task.snapshot
-    entries = [
-        SnapshotEntryOut(
-            id=entry.id,
-            word=entry.word,
-            phonetic=entry.phonetic,
-            part_of_speech=entry.part_of_speech,
-            meanings=entry.meanings,
-            example=entry.example,
-            example_translation=entry.example_translation,
-        )
-        for entry in snapshot.entries
-    ]
+def task_to_out(task: LearningTask, include_snapshot: bool = True) -> TaskOut:
+    entries = []
+    if include_snapshot:
+        entries = [
+            SnapshotEntryOut(
+                id=entry.id,
+                word=entry.word,
+                phonetic=entry.phonetic,
+                part_of_speech=entry.part_of_speech,
+                meanings=entry.meanings,
+                example=entry.example,
+                example_translation=entry.example_translation,
+            )
+            for entry in task.snapshot.entries
+        ]
     config = task.config_json
     return TaskOut(
         id=task.id,
@@ -79,6 +80,7 @@ def task_to_out(task: LearningTask) -> TaskOut:
             dictation=DictationConfig.model_validate(config["dictation"]),
         ),
         snapshot=entries,
+        snapshot_included=include_snapshot,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )
@@ -97,8 +99,11 @@ class TaskService:
             raise AppError("forbidden", "你无权访问该任务", status_code=403)
         return task
 
-    def list(self, user_id: str) -> list[TaskOut]:
-        return [task_to_out(task) for task in self.repository.list_for_user(user_id)]
+    def list(self, user_id: str, include_snapshot: bool = True) -> list[TaskOut]:
+        return [
+            task_to_out(task, include_snapshot)
+            for task in self.repository.list_for_user(user_id, include_snapshot)
+        ]
 
     def get(self, task_id: str, user_id: str) -> TaskOut:
         return task_to_out(self._owned(task_id, user_id))

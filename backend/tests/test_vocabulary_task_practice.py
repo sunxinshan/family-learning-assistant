@@ -80,7 +80,18 @@ def test_vocabulary_copy_is_independent(client: TestClient) -> None:
     copied = client.post(f"/api/v1/vocabularies/{library_id}/copy", headers=auth(alice))
     assert copied.status_code == 201
     assert copied.json()["ownerId"] != public.json()["ownerId"]
+    assert copied.json()["entryCount"] == 1
+    assert copied.json()["entriesIncluded"] is True
     assert copied.json()["entries"][0]["id"] != public.json()["entries"][0]["id"]
+
+    summary = client.get(
+        "/api/v1/vocabularies?scope=mine&include_entries=false", headers=auth(alice)
+    )
+    assert summary.status_code == 200
+    copied_summary = next(item for item in summary.json() if item["id"] == copied.json()["id"])
+    assert copied_summary["entryCount"] == 1
+    assert copied_summary["entries"] == []
+    assert copied_summary["entriesIncluded"] is False
 
 
 def test_task_practice_and_learning_flow(client: TestClient) -> None:
@@ -108,6 +119,15 @@ def test_task_practice_and_learning_flow(client: TestClient) -> None:
     )
     assert task.status_code == 201, task.text
     task_data = task.json()
+    assert task_data["snapshotIncluded"] is True
+    summary = client.get("/api/v1/tasks?include_snapshot=false", headers=auth(token))
+    assert summary.status_code == 200
+    assert summary.json()[0]["snapshot"] == []
+    assert summary.json()[0]["snapshotIncluded"] is False
+    task_detail = client.get(f"/api/v1/tasks/{task_data['id']}", headers=auth(token))
+    assert task_detail.status_code == 200
+    assert len(task_detail.json()["snapshot"]) == 2
+    assert task_detail.json()["snapshotIncluded"] is True
     attempt = client.post(
         f"/api/v1/tasks/{task_data['id']}/attempts",
         headers=auth(token),

@@ -15,11 +15,13 @@ import {
   Badge,
   Button,
   EmptyState,
+  LoadingBlock,
   PageHeader,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
 import type { Subject, Vocabulary } from '../types/domain'
 import { formatShortDate } from '../utils/format'
+import { vocabularyEntryCount } from '../utils/vocabulary'
 
 type Tab = 'personal' | 'public'
 
@@ -46,7 +48,7 @@ const LibraryCard = ({
             {library.published ? '已发布' : '草稿'}
           </Badge>
         ) : (
-          <Badge>{library.entries.length} 个词条</Badge>
+          <Badge>{vocabularyEntryCount(library)} 个词条</Badge>
         )}
       </div>
     </div>
@@ -61,7 +63,7 @@ const LibraryCard = ({
     </div>
     <div className="library-card-footer">
       <span>
-        {publicView ? `${library.entries.length} 个词条` : `更新于 ${formatShortDate(library.updatedAt)}`}
+        {publicView ? `${vocabularyEntryCount(library)} 个词条` : `更新于 ${formatShortDate(library.updatedAt)}`}
       </span>
       {publicView ? (
         <div className="library-card-footer-actions">
@@ -90,7 +92,7 @@ const LibraryCard = ({
 )
 
 export const VocabularyPage = () => {
-  const { libraries, publicLibraries, currentUser, refresh, showToast } = useAppStore()
+  const { libraries, publicLibraries, currentUser, isLoading, refresh, showToast } = useAppStore()
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('personal')
   const [query, setQuery] = useState('')
@@ -199,7 +201,11 @@ export const VocabularyPage = () => {
       ) : null}
 
       <section className="library-grid">
-        {filtered.length ? (
+        {isLoading && !filtered.length ? (
+          <div className="full-span">
+            <LoadingBlock label="正在加载词库" />
+          </div>
+        ) : filtered.length ? (
           filtered.map((library) => (
             <LibraryCard
               key={library.id}

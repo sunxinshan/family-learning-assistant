@@ -1,3 +1,7 @@
+---
+title: 家庭学习助手 README
+---
+
 # 家庭学习助手（Family Learning Assistant）
 
 一个基于 AI Agent 的家庭学习辅助系统。
@@ -7,6 +11,8 @@
 **让家长不必研究复杂的学习工具，只需要告诉 AI：孩子要学什么。**
 
 > 项目目前处于开发阶段，正在逐步实现核心功能。
+
+![](assets/BYoAu5XXgkLhcb6IZL5M1C.png)
 
 ## 项目背景
 
@@ -58,6 +64,8 @@ Agent 理解用户意图，通过 Tool 和 Workflow 调用后端业务能力。
 
 识别结果先交给用户预览和调整，确认后再保存。
 
+![](assets/L8yUYU5peOCraWl2bPHWia.png)
+
 ### 3. 学习内容与练习方式分离
 
 系统不将学习内容和具体练习形式绑定。
@@ -72,6 +80,8 @@ Agent 理解用户意图，通过 Tool 和 Workflow 调用后端业务能力。
 
 通过统一的内容和题目管理能力，为后续增加更多学科和学习方式提供基础。
 
+![](assets/EPdjI1rMGj659hXAF9lh1Z.png)
+
 ### 4. 关键操作由用户确认
 
 Agent 可以理解需求、制定操作方案和调用工具，但不会在未经确认的情况下执行重要操作。
@@ -85,12 +95,14 @@ Agent 可以理解需求、制定操作方案和调用工具，但不会在未�
 
 AI 负责提出建议，程序负责业务校验和执行，用户拥有最终决定权。
 
+![](assets/uuJfjwoMGYxhiULZvcpDNE.png)
+
 ## 功能规划
 
 项目采用逐步迭代的方式开发。
 
 | 功能模块 | 主要职责 |
-|---|---|
+| --- | --- |
 | AI Agent | 理解用户意图、规划工作流、调用业务工具 |
 | 学习资料 Material | 上传、管理原始学习资料 |
 | 内容加工 Content | OCR、内容提取、结构识别、内容生成 |
@@ -102,6 +114,8 @@ AI 负责提出建议，程序负责业务校验和执行，用户拥有最终�
 | 学习分析 Learning | 学习统计、错题整理和复习计划 |
 | 用户管理 User | 用户认证、个人数据隔离 |
 | 管理后台 Admin | 用户、公共词库和系统管理 |
+
+![](assets/l2qkfml5CL7lS16iDYuhe2.png)
 
 ### MVP 优先实现
 
@@ -123,7 +137,7 @@ AI 负责提出建议，程序负责业务校验和执行，用户拥有最终�
 ### 技术选型
 
 | 技术 | 用途 |
-|---|---|
+| --- | --- |
 | Python | 后端开发语言 |
 | FastAPI | HTTP API 服务 |
 | LangGraph | Agent 和 Workflow 编排 |
@@ -147,6 +161,8 @@ AI 负责提出建议，程序负责业务校验和执行，用户拥有最终�
 - Tool 不直接访问数据库，业务操作统一通过 Service 完成。
 - 使用 LangGraph Checkpointer 支持 Workflow 中断和恢复。
 - 使用 LangSmith 追踪 Graph、LLM 和 Tool 执行过程。
+
+![](assets/YDoTSPBCmiWV9bzCjGs9Fq.png)
 
 ### 模块化设计
 

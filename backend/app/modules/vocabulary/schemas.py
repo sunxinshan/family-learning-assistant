@@ -44,7 +44,9 @@ class VocabularyOut(CamelModel):
     tags: list[str]
     visibility: str
     published: bool
+    entry_count: int
     entries: list[WordEntryOut]
+    entries_included: bool = True
     created_at: datetime
     updated_at: datetime
 

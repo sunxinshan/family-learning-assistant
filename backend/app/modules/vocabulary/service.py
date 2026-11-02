@@ -25,7 +25,7 @@ def normalize_word(value: str) -> str:
     return unicodedata.normalize("NFKC", value).strip().casefold()
 
 
-def vocabulary_to_out(library: Vocabulary) -> VocabularyOut:
+def vocabulary_to_out(library: Vocabulary, include_entries: bool = True) -> VocabularyOut:
     return VocabularyOut(
         id=library.id,
         owner_id=library.owner_user_id,
@@ -35,7 +35,13 @@ def vocabulary_to_out(library: Vocabulary) -> VocabularyOut:
         tags=[tag.name for tag in library.tags],
         visibility=library.visibility,
         published=library.published,
-        entries=[WordEntryOut.model_validate(entry) for entry in library.entries],
+        entry_count=library.entry_count,
+        entries=(
+            [WordEntryOut.model_validate(entry) for entry in library.entries]
+            if include_entries
+            else []
+        ),
+        entries_included=include_entries,
         created_at=library.created_at,
         updated_at=library.updated_at,
     )
@@ -67,14 +73,20 @@ class VocabularyService:
             raise AppError("forbidden", "你无权访问该词库", status_code=403)
         return library
 
-    def list_available(self, user_id: str, subject: str | None) -> list[Vocabulary]:
-        return self.repository.list_available(user_id, subject)
+    def list_available(
+        self, user_id: str, subject: str | None, include_entries: bool = True
+    ) -> list[Vocabulary]:
+        return self.repository.list_available(user_id, subject, include_entries)
 
-    def list_mine(self, user_id: str) -> list[Vocabulary]:
-        return self.repository.list_mine(user_id)
+    def list_mine(self, user_id: str, include_entries: bool = True) -> list[Vocabulary]:
+        return self.repository.list_mine(user_id, include_entries)
 
-    def list_public(self, role: str, subject: str | None = None) -> list[Vocabulary]:
-        libraries = self.repository.list_public(include_drafts=role == "admin")
+    def list_public(
+        self, role: str, subject: str | None = None, include_entries: bool = True
+    ) -> list[Vocabulary]:
+        libraries = self.repository.list_public(
+            include_drafts=role == "admin", include_entries=include_entries
+        )
         return [item for item in libraries if not subject or item.subject == subject]
 
     def _build_entries(self, library_id: str, entries: list[WordEntryIn]) -> list[WordEntry]:

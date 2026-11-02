@@ -30,12 +30,20 @@ import type {
   PendingAction,
   ToolExecution,
 } from '../types/domain'
+import { hasVocabularyDetails } from '../utils/vocabulary'
 
 const messageId = () => `message-${crypto.randomUUID()}`
 const now = () => new Date().toISOString()
 
 export const ChatPage = () => {
-  const { currentUser, libraries, publicLibraries, showToast, refresh } = useAppStore()
+  const {
+    currentUser,
+    libraries,
+    publicLibraries,
+    loadFullLibraries,
+    showToast,
+    refresh,
+  } = useAppStore()
   const navigate = useNavigate()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -48,6 +56,14 @@ export const ChatPage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mountedUserIdRef = useRef<string | null>(null)
   const executionMessagesRef = useRef(new Map<string, string>())
+
+  useEffect(() => {
+    if (!currentUser) return
+    if ([...libraries, ...publicLibraries].every(hasVocabularyDetails)) return
+    void loadFullLibraries().catch((cause) => {
+      showToast(cause instanceof Error ? cause.message : '词库加载失败', 'danger')
+    })
+  }, [currentUser, libraries, publicLibraries, loadFullLibraries, showToast])
 
   useEffect(() => {
     if (!currentUser) return

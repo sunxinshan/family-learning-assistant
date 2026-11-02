@@ -21,6 +21,7 @@ import {
   Field,
   IconButton,
   InlineError,
+  LoadingBlock,
   Modal,
   PageHeader,
   SelectInput,
@@ -30,6 +31,7 @@ import {
 import { useAppStore } from '../stores/AppStoreContext'
 import type { Subject, WordEntry } from '../types/domain'
 import { formatDateTime } from '../utils/format'
+import { hasVocabularyDetails } from '../utils/vocabulary'
 
 const blankEntry = (): WordEntry => ({
   id: `word-${crypto.randomUUID()}`,
@@ -48,10 +50,13 @@ export const VocabularyDetailPage = () => {
     libraries,
     publicLibraries,
     currentUser,
+    loadLibrary,
     refresh,
     showToast,
   } = useAppStore()
   const library = [...libraries, ...publicLibraries].find((candidate) => candidate.id === libraryId)
+  const [libraryLoading, setLibraryLoading] = useState(true)
+  const [libraryLoadError, setLibraryLoadError] = useState('')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [entryDraft, setEntryDraft] = useState<WordEntry | null>(null)
@@ -69,6 +74,33 @@ export const VocabularyDetailPage = () => {
     setSelected([])
   }, [query, libraryId])
 
+  useEffect(() => {
+    if (!libraryId || !currentUser) {
+      setLibraryLoading(false)
+      return
+    }
+    if (library && hasVocabularyDetails(library)) {
+      setLibraryLoading(false)
+      setLibraryLoadError('')
+      return
+    }
+    let cancelled = false
+    setLibraryLoading(true)
+    setLibraryLoadError('')
+    void loadLibrary(libraryId)
+      .catch((cause) => {
+        if (!cancelled) {
+          setLibraryLoadError(cause instanceof Error ? cause.message : '词库加载失败')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLibraryLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, library, libraryId, loadLibrary])
+
   const editable = Boolean(
     library &&
       currentUser &&
@@ -85,13 +117,23 @@ export const VocabularyDetailPage = () => {
     [library, query],
   )
 
-  if (!library || !currentUser) {
+  if (!currentUser) return null
+
+  if (libraryLoading) {
+    return (
+      <main className="page-container">
+        <LoadingBlock label="正在加载词库" />
+      </main>
+    )
+  }
+
+  if (!library || !hasVocabularyDetails(library)) {
     return (
       <main className="page-container">
         <EmptyState
           icon={BookOpenText}
           title="词库不存在"
-          description="它可能已经被删除，或者你没有访问权限。"
+          description={libraryLoadError || '它可能已经被删除，或者你没有访问权限。'}
           action={<Link className="button button-primary button-md" to="/vocabulary">返回词库列表</Link>}
         />
       </main>

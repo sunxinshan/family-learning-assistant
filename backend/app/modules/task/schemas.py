@@ -73,5 +73,6 @@ class TaskOut(CamelModel):
     library_name: str
     config: TaskConfigOut
     snapshot: list[SnapshotEntryOut]
+    snapshot_included: bool = True
     created_at: datetime
     updated_at: datetime

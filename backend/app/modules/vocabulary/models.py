@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, UniqueConstraint, func, select
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.models import IdMixin, TimestampMixin, UTCDateTime
@@ -72,6 +72,14 @@ class WordEntry(IdMixin, TimestampMixin, Base):
     example_translation: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     vocabulary: Mapped[Vocabulary] = relationship(back_populates="entries")
+
+
+Vocabulary.entry_count = column_property(
+    select(func.count(WordEntry.id))
+    .where(WordEntry.vocabulary_id == Vocabulary.id)
+    .correlate_except(WordEntry)
+    .scalar_subquery()
+)
 
 
 class VocabularyLearningState(IdMixin, Base):

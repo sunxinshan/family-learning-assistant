@@ -259,6 +259,28 @@ def test_deleting_task_cascades_practice_facts(client: TestClient, app: FastAPI)
         assert session.scalar(select(func.count()).select_from(PracticeAnswer)) == 0
 
 
+def test_completed_task_can_be_deleted_as_well(client: TestClient) -> None:
+    """任务状态不限制删除：做完的听写任务同样可以删掉。"""
+    token = login(client)
+    library = create_library(client, token, name="Completed Delete Library")
+    task = create_task(client, token, library)
+    attempt = client.post(f"/api/v1/tasks/{task['id']}/attempts", headers=auth(token)).json()
+    for entry in task["snapshot"]:
+        answered = client.post(
+            f"/api/v1/attempts/{attempt['id']}/answers",
+            headers=auth(token),
+            json={"given": entry["word"], "durationMs": 100},
+        )
+        assert answered.status_code == 200, answered.text
+
+    completed = client.get(f"/api/v1/tasks/{task['id']}", headers=auth(token)).json()
+    assert completed["status"] == "completed"
+    assert completed["progress"] == 100
+
+    assert client.delete(f"/api/v1/tasks/{task['id']}", headers=auth(token)).status_code == 204
+    assert client.get(f"/api/v1/tasks/{task['id']}", headers=auth(token)).status_code == 404
+
+
 def test_task_mode_can_be_changed_without_replacing_snapshot(client: TestClient) -> None:
     token = login(client)
     library = create_library(client, token)

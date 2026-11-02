@@ -24,6 +24,7 @@ import {
 import { useAppStore } from '../stores/AppStoreContext'
 import type { LearningStats, User, Vocabulary } from '../types/domain'
 import { formatDateTime } from '../utils/format'
+import { vocabularyEntryCount } from '../utils/vocabulary'
 
 type Tab = 'users' | 'vocabularies' | 'logs'
 
@@ -33,7 +34,7 @@ const roleBadge = (role: User['role']) =>
   role === 'admin' ? <Badge tone="info">管理员</Badge> : <Badge>普通用户</Badge>
 
 export const AdminPage = () => {
-  const { currentUser, publicLibraries, refresh, showToast } = useAppStore()
+  const { currentUser, publicLibraries, dataVersion, refresh, showToast } = useAppStore()
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('users')
   const [statsUser, setStatsUser] = useState<AdminUser | null>(null)
@@ -44,11 +45,11 @@ export const AdminPage = () => {
 
   const users = useMemo<AdminUser[]>(
     () => (currentUser ? api.admin.listUsers(currentUser.id) : []),
-    [currentUser, publicLibraries],
+    [currentUser, publicLibraries, dataVersion],
   )
   const logs = useMemo(
     () => (currentUser ? api.admin.listLogs(currentUser.id) : []),
-    [currentUser, publicLibraries],
+    [currentUser, publicLibraries, dataVersion],
   )
   const [stats, setStats] = useState<LearningStats | null>(null)
 
@@ -248,7 +249,7 @@ export const AdminPage = () => {
                       </div>
                     </td>
                     <td>{library.subject === 'english' ? '英语' : '语文'}</td>
-                    <td>{library.entries.length}</td>
+                    <td>{vocabularyEntryCount(library)}</td>
                     <td>
                       <Badge tone={library.published ? 'success' : 'warning'}>
                         {library.published ? '已发布' : '草稿'}

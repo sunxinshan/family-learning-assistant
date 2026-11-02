@@ -36,7 +36,7 @@ const blankEntry = (): WordEntry => ({
 })
 
 export const VocabularyCreatePage = () => {
-  const { currentUser, refresh, showToast } = useAppStore()
+  const { currentUser, refresh, showToast, upsertLibrary } = useAppStore()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const isAdmin = currentUser?.role === 'admin'
@@ -201,6 +201,7 @@ export const VocabularyCreatePage = () => {
                 .update(extraction.id, extraction.version, draft)
                 .then((updated) => api.content.confirm(updated.id, updated.version))
             : await api.vocabulary.create(currentUser.id, draft)
+      upsertLibrary(library)
       await refresh()
       showToast(
         visibility === 'public' ? '公共词库草稿已创建' : '个人词库已创建',

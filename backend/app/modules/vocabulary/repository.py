@@ -1,5 +1,5 @@
 from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, raiseload, selectinload
 
 from app.modules.vocabulary.models import (
     Vocabulary,
@@ -13,32 +13,38 @@ class VocabularyRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def _base_query(self) -> Select[tuple[Vocabulary]]:
-        return select(Vocabulary).options(
-            selectinload(Vocabulary.tags),
-            selectinload(Vocabulary.entries),
-        )
+    def _base_query(self, include_entries: bool = True) -> Select[tuple[Vocabulary]]:
+        query = select(Vocabulary).options(selectinload(Vocabulary.tags))
+        if include_entries:
+            query = query.options(selectinload(Vocabulary.entries))
+        else:
+            query = query.options(raiseload(Vocabulary.entries))
+        return query
 
     def get(self, library_id: str) -> Vocabulary | None:
         return self.session.scalar(self._base_query().where(Vocabulary.id == library_id))
 
-    def list_mine(self, user_id: str) -> list[Vocabulary]:
+    def list_mine(self, user_id: str, include_entries: bool = True) -> list[Vocabulary]:
         return list(
             self.session.scalars(
-                self._base_query()
+                self._base_query(include_entries)
                 .where(Vocabulary.owner_user_id == user_id)
                 .order_by(Vocabulary.updated_at.desc())
             )
         )
 
-    def list_public(self, include_drafts: bool = False) -> list[Vocabulary]:
-        query = self._base_query().where(Vocabulary.visibility == "public")
+    def list_public(
+        self, include_drafts: bool = False, include_entries: bool = True
+    ) -> list[Vocabulary]:
+        query = self._base_query(include_entries).where(Vocabulary.visibility == "public")
         if not include_drafts:
             query = query.where(Vocabulary.published.is_(True))
         return list(self.session.scalars(query.order_by(Vocabulary.updated_at.desc())))
 
-    def list_available(self, user_id: str, subject: str | None = None) -> list[Vocabulary]:
-        query = self._base_query().where(
+    def list_available(
+        self, user_id: str, subject: str | None = None, include_entries: bool = True
+    ) -> list[Vocabulary]:
+        query = self._base_query(include_entries).where(
             or_(
                 Vocabulary.owner_user_id == user_id,
                 (Vocabulary.visibility == "public") & Vocabulary.published.is_(True),

@@ -147,6 +147,15 @@ test('online dictation submits answers through the real practice API', async ({ 
   await page.getByRole('button', { name: '创建词库' }).click()
   await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
 
+  // A delayed or stale list refresh must not hide a task that was just created.
+  let returnEmptyTaskList = true
+  await page.route(/\/api\/v1\/tasks$/, async (route) => {
+    if (returnEmptyTaskList && route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+      return
+    }
+    await route.continue()
+  })
   await page.goto('/tasks/new')
   await page.getByLabel('任务名称').fill(taskName)
   await expect(page.getByLabel('任务模式')).toBeHidden()
@@ -157,6 +166,12 @@ test('online dictation submits answers through the real practice API', async ({ 
   await page.getByRole('button', { name: '全选' }).click()
   await page.getByRole('button', { name: '创建并保存快照' }).click()
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('heading', { name: taskName })).toBeVisible()
+  await expect(page.getByText('任务不存在', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: taskName })).toBeVisible()
+  await expect(page.getByText('任务不存在', { exact: true })).toHaveCount(0)
+  returnEmptyTaskList = false
   await page.getByRole('link', { name: '开始学习' }).click()
   await page.getByRole('button', { name: '提交拼写' }).waitFor({ state: 'detached' }).catch(() => undefined)
   const answer = page.getByLabel('输入你听到的词语')

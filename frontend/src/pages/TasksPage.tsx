@@ -1,19 +1,21 @@
 import { MessageSquarePlus, Plus, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, EmptyState, PageHeader } from '../components/ui'
+import { Button, EmptyState, LoadingBlock, PageHeader } from '../components/ui'
 import { TaskCard } from '../features/task/TaskCard'
+import { TaskDeleteDialog } from '../features/task/TaskDeleteDialog'
 import { useAppStore } from '../stores/AppStoreContext'
-import type { TaskStatus, TaskType } from '../types/domain'
+import type { LearningTask, TaskStatus, TaskType } from '../types/domain'
 
 type StatusFilter = 'all' | TaskStatus
 type TypeFilter = 'all' | TaskType
 
 export const TasksPage = () => {
-  const { tasks, practices } = useAppStore()
+  const { tasks, practices, isLoading } = useAppStore()
   const [status, setStatus] = useState<StatusFilter>('all')
   const [type, setType] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<LearningTask | null>(null)
 
   const filtered = useMemo(
     () =>
@@ -109,9 +111,16 @@ export const TasksPage = () => {
       </div>
 
       <section className="task-list">
-        {filtered.length ? (
+        {isLoading && !filtered.length ? (
+          <LoadingBlock label="正在加载学习任务" />
+        ) : filtered.length ? (
           filtered.map((task) => (
-            <TaskCard key={task.id} task={task} started={startedTaskIds.has(task.id)} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              started={startedTaskIds.has(task.id)}
+              onDelete={setPendingDelete}
+            />
           ))
         ) : (
           <EmptyState
@@ -137,6 +146,16 @@ export const TasksPage = () => {
           />
         )}
       </section>
+
+      <TaskDeleteDialog
+        task={pendingDelete}
+        practiceCount={
+          pendingDelete
+            ? practices.filter((attempt) => attempt.taskId === pendingDelete.id).length
+            : 0
+        }
+        onClose={() => setPendingDelete(null)}
+      />
     </main>
   )
 }

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { PracticeLayout } from '../features/practice/PracticeLayout'
-import { Badge, Button, EmptyState } from '../components/ui'
+import { Badge, Button, EmptyState, LoadingBlock } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
 import type { DictationConfig, PracticeAttempt, WordEntry } from '../types/domain'
 import { formatDuration } from '../utils/format'
@@ -42,9 +42,9 @@ export const DictationPracticePage = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const isWrongPractice = location.pathname.endsWith('/wrong')
-  const { tasks, currentUser, refresh, showToast } = useAppStore()
+  const { tasks, currentUser, loadTask, refresh, showToast } = useAppStore()
   const task = tasks.find((candidate) => candidate.id === taskId)
-  const taskExists = tasks.some((candidate) => candidate.id === taskId)
+  const taskDetailsReady = task?.snapshotIncluded !== false
   const config = task?.config.dictation ?? defaultDictationConfig
   const isOffline = config.mode === 'offline'
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null)
@@ -60,6 +60,8 @@ export const DictationPracticePage = () => {
   const [autoPaused, setAutoPaused] = useState(false)
   const [autoRound, setAutoRound] = useState(0)
   const [showResults, setShowResults] = useState(false)
+  const [taskLoading, setTaskLoading] = useState(true)
+  const [taskLoadError, setTaskLoadError] = useState('')
   const startedAtRef = useRef(performance.now())
   const autoAdvanceTimer = useRef<number | null>(null)
   const answerInputRef = useRef<HTMLInputElement>(null)
@@ -101,7 +103,33 @@ export const DictationPracticePage = () => {
     : undefined
 
   useEffect(() => {
-    if (!taskId || !currentUser || !taskExists) {
+    if (!taskId || !currentUser) {
+      setTaskLoading(false)
+      return
+    }
+    if (taskDetailsReady) {
+      setTaskLoading(false)
+      setTaskLoadError('')
+      return
+    }
+    let cancelled = false
+    setTaskLoading(true)
+    void loadTask(taskId)
+      .catch((cause) => {
+        if (!cancelled) {
+          setTaskLoadError(cause instanceof Error ? cause.message : '任务加载失败')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTaskLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, loadTask, taskDetailsReady, taskId])
+
+  useEffect(() => {
+    if (!taskId || !currentUser || !taskDetailsReady) {
       setAttempt(null)
       return
     }
@@ -131,7 +159,7 @@ export const DictationPracticePage = () => {
     return () => {
       cancelled = true
     }
-  }, [taskId, currentUser, taskExists, isWrongPractice, showToast])
+  }, [taskId, currentUser, taskDetailsReady, isWrongPractice, showToast])
 
   const clearAutoAdvance = useCallback(() => {
     if (autoAdvanceTimer.current !== null) {
@@ -282,16 +310,38 @@ export const DictationPracticePage = () => {
     if (!feedback && !showResults && entry) answerInputRef.current?.focus()
   }, [activeIndex, entry, feedback, showResults])
 
-  if (!task || !currentUser || !attempt) {
+  if (!currentUser) return null
+
+  if (taskLoading) {
+    return (
+      <div className="practice-shell">
+        <main className="practice-main practice-centered">
+          <LoadingBlock label="正在加载听写任务" />
+        </main>
+      </div>
+    )
+  }
+
+  if (!task || !taskDetailsReady || taskLoadError) {
     return (
       <div className="practice-shell">
         <main className="practice-main practice-centered">
           <EmptyState
             icon={Headphones}
             title="无法开始听写"
-            description="任务不存在，或当前账户无权访问。"
+            description={taskLoadError || '任务不存在，或当前账户无权访问。'}
             action={<Link className="button button-primary button-md" to="/tasks">返回任务列表</Link>}
           />
+        </main>
+      </div>
+    )
+  }
+
+  if (!attempt) {
+    return (
+      <div className="practice-shell">
+        <main className="practice-main practice-centered">
+          <LoadingBlock label="正在准备听写" />
         </main>
       </div>
     )
@@ -700,12 +750,6 @@ export const DictationPracticePage = () => {
             </button>
           </div>
         ) : null}
-
-        <div className="dictation-wave" aria-hidden="true">
-          {Array.from({ length: 32 }, (_, index) => (
-            <i key={index} style={{ height: `${12 + ((index * 13) % 28)}px` }} />
-          ))}
-        </div>
 
         <div className="dictation-answer-area">
           <label htmlFor="dictation-answer">输入你听到的词语</label>

@@ -2108,6 +2108,16 @@ ol {
   text-decoration: none;
 }
 
+.task-delete-button {
+  color: var(--color-text-tertiary);
+}
+
+.task-delete-button:hover {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+}
+
 /* Task detail */
 .detail-grid {
   display: grid;
@@ -3077,23 +3087,6 @@ ol {
   margin-top: 3px;
   color: var(--color-text-tertiary);
   font-size: 10px;
-}
-
-.dictation-wave {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 54px;
-  margin: 12px 0 8px;
-  overflow: hidden;
-}
-
-.dictation-wave i {
-  width: 3px;
-  min-height: 6px;
-  background: #d2d2d2;
-  border-radius: 999px;
 }
 
 .dictation-answer-area {

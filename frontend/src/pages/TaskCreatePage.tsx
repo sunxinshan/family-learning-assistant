@@ -20,6 +20,7 @@ import {
   EmptyState,
   Field,
   InlineError,
+  LoadingBlock,
   PageHeader,
   SelectInput,
   TextInput,
@@ -34,10 +35,21 @@ import type {
 } from '../types/domain'
 import { taskModeLabel, taskTypeLabel } from '../utils/format'
 import { formatEntrySelection, parseEntrySelection } from '../utils/selection'
+import { hasVocabularyDetails } from '../utils/vocabulary'
 
 export const TaskCreatePage = () => {
-  const { currentUser, libraries, publicLibraries, refresh, showToast } = useAppStore()
+  const {
+    currentUser,
+    libraries,
+    publicLibraries,
+    isLoading,
+    loadFullLibraries,
+    upsertTask,
+    showToast,
+  } = useAppStore()
   const navigate = useNavigate()
+  const [librariesLoading, setLibrariesLoading] = useState(true)
+  const [libraryLoadError, setLibraryLoadError] = useState('')
   const availableLibraries = useMemo(() => {
     const usablePersonal = libraries.filter((library) => library.entries.length > 0)
     const usablePublic = publicLibraries.filter(
@@ -73,6 +85,31 @@ export const TaskCreatePage = () => {
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const librariesReady = [...libraries, ...publicLibraries].every(hasVocabularyDetails)
+
+  useEffect(() => {
+    if (!currentUser) return
+    if (librariesReady) {
+      setLibrariesLoading(false)
+      setLibraryLoadError('')
+      return
+    }
+    let cancelled = false
+    setLibrariesLoading(true)
+    setLibraryLoadError('')
+    void loadFullLibraries()
+      .catch((cause) => {
+        if (!cancelled) {
+          setLibraryLoadError(cause instanceof Error ? cause.message : '词库加载失败')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLibrariesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, librariesReady, loadFullLibraries])
 
   const applyLibrary = (libraryId: string) => {
     const library = availableLibraries.find((item) => item.id === libraryId)
@@ -97,6 +134,14 @@ export const TaskCreatePage = () => {
 
   if (!currentUser) return null
 
+  if ((isLoading || librariesLoading) && !availableLibraries.length) {
+    return (
+      <main className="page-container">
+        <LoadingBlock label="正在加载可用词库" />
+      </main>
+    )
+  }
+
   const selectedLibrary =
     subjectLibraries.find((library) => library.id === form.libraryId) ?? subjectLibraries[0]
   if (!selectedLibrary) {
@@ -109,7 +154,11 @@ export const TaskCreatePage = () => {
         <EmptyState
           icon={BookOpenText}
           title={availableLibraries.length ? '该学科暂无可用词库' : '还没有可用词库'}
-          description="请创建包含词条的个人词库，或使用已发布的公共词库。"
+          description={
+            libraryLoadError
+              ? `词库加载失败：${libraryLoadError}`
+              : '请创建包含词条的个人词库，或使用已发布的公共词库。'
+          }
           action={
             <div className="empty-actions">
               <Link className="button button-primary button-md" to="/vocabulary/new">新建词库</Link>
@@ -205,7 +254,7 @@ export const TaskCreatePage = () => {
             }
           : {}),
       })
-      refresh()
+      upsertTask(task)
       showToast('学习任务已创建', 'success')
       navigate(`/tasks/${task.id}`)
     } catch (cause) {

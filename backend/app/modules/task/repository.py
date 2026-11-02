@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, raiseload, selectinload
 
 from app.modules.task.models import LearningTask, TaskSnapshot
 
@@ -16,10 +16,17 @@ class TaskRepository:
     def get(self, task_id: str) -> LearningTask | None:
         return self.session.scalar(self._query().where(LearningTask.id == task_id))
 
-    def list_for_user(self, user_id: str) -> list[LearningTask]:
+    def list_for_user(self, user_id: str, include_snapshot: bool = True) -> list[LearningTask]:
+        query = select(LearningTask)
+        if include_snapshot:
+            query = query.options(
+                selectinload(LearningTask.snapshot).selectinload(TaskSnapshot.entries)
+            )
+        else:
+            query = query.options(raiseload(LearningTask.snapshot))
         return list(
             self.session.scalars(
-                self._query()
+                query
                 .where(LearningTask.user_id == user_id)
                 .order_by(LearningTask.updated_at.desc())
             )

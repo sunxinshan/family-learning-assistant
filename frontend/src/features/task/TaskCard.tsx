@@ -1,6 +1,6 @@
-import { ArrowRight, BookOpenText, Headphones, Play } from 'lucide-react'
+import { ArrowRight, BookOpenText, Headphones, Play, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Badge, ProgressBar } from '../../components/ui'
+import { Badge, IconButton, ProgressBar } from '../../components/ui'
 import type { LearningTask } from '../../types/domain'
 import {
   formatShortDate,
@@ -11,7 +11,15 @@ import {
   taskTypeLabel,
 } from '../../utils/format'
 
-export const TaskCard = ({ task, started }: { task: LearningTask; started: boolean }) => {
+export const TaskCard = ({
+  task,
+  started,
+  onDelete,
+}: {
+  task: LearningTask
+  started: boolean
+  onDelete?: (task: LearningTask) => void
+}) => {
   const Icon = task.type === 'vocabulary' ? BookOpenText : Headphones
   return (
     <article className="task-card">
@@ -51,6 +59,14 @@ export const TaskCard = ({ task, started }: { task: LearningTask; started: boole
         <Link className="icon-button icon-button-md" aria-label="查看任务详情" to={`/tasks/${task.id}`}>
           <ArrowRight size={16} />
         </Link>
+        {onDelete ? (
+          <IconButton
+            label="删除任务"
+            icon={Trash2}
+            className="task-delete-button"
+            onClick={() => onDelete(task)}
+          />
+        ) : null}
       </div>
     </article>
   )

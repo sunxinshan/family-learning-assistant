@@ -24,6 +24,7 @@ import {
   EmptyState,
   Field,
   InlineError,
+  LoadingBlock,
   Modal,
   PageHeader,
   ProgressBar,
@@ -50,8 +51,13 @@ import {
 export const TaskDetailPage = () => {
   const { taskId } = useParams()
   const navigate = useNavigate()
-  const { tasks, practices, currentUser, refresh, showToast } = useAppStore()
-  const task = tasks.find((candidate) => candidate.id === taskId)
+  const { tasks, practices, currentUser, loadTask, refresh, showToast } = useAppStore()
+  const cachedTask = tasks.find((candidate) => candidate.id === taskId)
+  const [task, setTask] = useState(cachedTask)
+  const [taskLoading, setTaskLoading] = useState(
+    !cachedTask || cachedTask.snapshotIncluded === false,
+  )
+  const [taskLoadError, setTaskLoadError] = useState('')
   const attempts = useMemo(
     () =>
       practices
@@ -84,6 +90,39 @@ export const TaskDetailPage = () => {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+    if (!taskId || !currentUser) {
+      setTask(undefined)
+      setTaskLoading(false)
+      return
+    }
+    if (cachedTask && cachedTask.snapshotIncluded !== false) {
+      setTask(cachedTask)
+      setTaskLoading(false)
+      setTaskLoadError('')
+      return
+    }
+    setTask(undefined)
+    setTaskLoadError('')
+    setTaskLoading(true)
+    void loadTask(taskId)
+      .then((loaded) => {
+        if (!cancelled) setTask(loaded)
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setTaskLoadError(cause instanceof Error ? cause.message : '任务加载失败')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTaskLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cachedTask, currentUser, loadTask, taskId])
+
+  useEffect(() => {
     if (!task || !currentUser) return
     let cancelled = false
     setWrongQuestionsLoading(true)
@@ -103,13 +142,27 @@ export const TaskDetailPage = () => {
     }
   }, [currentUser, practices.length, task, task?.id, task?.updatedAt])
 
-  if (!task || !currentUser) {
+  if (!currentUser) return null
+
+  if (taskLoading) {
+    return (
+      <main className="page-container">
+        <LoadingBlock label="正在加载任务" />
+      </main>
+    )
+  }
+
+  if (!task) {
     return (
       <main className="page-container">
         <EmptyState
           icon={BookOpenText}
           title="任务不存在"
-          description="它可能已经被删除。返回任务列表查看当前可用的学习任务。"
+          description={
+            taskLoadError
+              ? `任务加载失败：${taskLoadError}`
+              : '它可能已经被删除。返回任务列表查看当前可用的学习任务。'
+          }
           action={<Link className="button button-primary button-md" to="/tasks">返回任务列表</Link>}
         />
       </main>

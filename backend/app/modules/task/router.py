@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
@@ -16,10 +16,11 @@ def get_task_service(session: Session = Depends(get_session)) -> TaskService:
 
 @router.get("/tasks", response_model=list[TaskOut])
 def list_tasks(
+    include_snapshot: bool = Query(True),
     context: RuntimeContext = Depends(get_runtime_context),
     service: TaskService = Depends(get_task_service),
 ) -> list[TaskOut]:
-    return service.list(context.user_id)
+    return service.list(context.user_id, include_snapshot)
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201)

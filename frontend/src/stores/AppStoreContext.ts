@@ -19,11 +19,18 @@ export interface AppStoreValue {
   publicLibraries: Vocabulary[]
   practices: PracticeAttempt[]
   isLoading: boolean
+  dataVersion: number
   toast: ToastState | null
   login: (nickname: string, password: string) => Promise<User>
   register: (nickname: string, password: string) => Promise<User>
   logout: () => void
   refresh: () => Promise<void>
+  upsertTask: (task: LearningTask) => void
+  loadTask: (taskId: string) => Promise<LearningTask>
+  removeTask: (taskId: string) => Promise<void>
+  upsertLibrary: (library: Vocabulary) => void
+  loadLibrary: (libraryId: string) => Promise<Vocabulary>
+  loadFullLibraries: () => Promise<void>
   showToast: (message: string, tone?: ToastState['tone']) => void
 }
 

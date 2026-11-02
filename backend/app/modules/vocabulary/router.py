@@ -30,16 +30,21 @@ def subjects(_: RuntimeContext = Depends(get_runtime_context)) -> list[SubjectOu
 def list_vocabularies(
     scope: str = Query("mine", pattern="^(mine|public|available)$"),
     subject: str | None = None,
+    include_entries: bool = Query(True),
     context: RuntimeContext = Depends(get_runtime_context),
     service: VocabularyService = Depends(get_vocabulary_service),
 ) -> list[VocabularyOut]:
     if scope == "mine":
-        items = service.list_mine(context.user_id)
+        items = service.list_mine(context.user_id, include_entries)
     elif scope == "public":
-        items = service.list_public(context.role, subject)
+        items = service.list_public(context.role, subject, include_entries)
     else:
-        items = service.list_available(context.user_id, subject)
-    return [vocabulary_to_out(item) for item in items if not subject or item.subject == subject]
+        items = service.list_available(context.user_id, subject, include_entries)
+    return [
+        vocabulary_to_out(item, include_entries)
+        for item in items
+        if not subject or item.subject == subject
+    ]
 
 
 @router.post("/vocabularies", response_model=VocabularyOut, status_code=status.HTTP_201_CREATED)

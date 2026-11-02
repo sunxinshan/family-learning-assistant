@@ -143,7 +143,15 @@ const refreshStats = async (): Promise<void> => {
   statsCache = await request<LearningStats>('/learning/stats')
 }
 
-const refreshAll = async (): Promise<void> => {
+type RefreshPartial = Partial<{
+  tasks: LearningTask[]
+  libraries: Vocabulary[]
+  publicLibraries: Vocabulary[]
+  practices: PracticeAttempt[]
+  stats: LearningStats
+}>
+
+const refreshAll = async (onPartial?: (partial: RefreshPartial) => void): Promise<void> => {
   if (!authSession.current()) {
     tasksCache = []
     librariesCache = []
@@ -155,25 +163,57 @@ const refreshAll = async (): Promise<void> => {
     activeAttempts.clear()
     return
   }
-  const [tasks, libraries, publicLibraries, attempts, stats] = await Promise.all([
-    request<LearningTask[]>('/tasks'),
-    request<Vocabulary[]>('/vocabularies?scope=mine'),
-    request<Vocabulary[]>('/vocabularies?scope=public'),
-    request<PracticeAttempt[]>('/attempts'),
-    request<LearningStats>('/learning/stats'),
+  const tasksRequest = request<LearningTask[]>('/tasks?include_snapshot=false').then((tasks) => {
+    // 列表接口不带词条快照，但快照创建后不可变：沿用已经取到的快照，
+    // 避免刷新把正在练习的任务打成“无快照”，导致练习页重新加载并跳题。
+    tasksCache = sortUpdated(
+      tasks.map((task) => {
+        if (task.snapshotIncluded !== false) return task
+        const cached = tasksCache.find((item) => item.id === task.id)
+        return cached && cached.snapshotIncluded !== false
+          ? { ...task, snapshot: cached.snapshot, snapshotIncluded: true }
+          : task
+      }),
+    )
+    onPartial?.({ tasks: tasksCache })
+  })
+  const librariesRequest = request<Vocabulary[]>(
+    '/vocabularies?scope=mine&include_entries=false',
+  ).then((libraries) => {
+    librariesCache = sortUpdated(libraries)
+    onPartial?.({ libraries: librariesCache })
+  })
+  const publicLibrariesRequest = request<Vocabulary[]>(
+    '/vocabularies?scope=public&include_entries=false',
+  ).then((publicLibraries) => {
+    publicLibrariesCache = sortUpdated(publicLibraries)
+    onPartial?.({ publicLibraries: publicLibrariesCache })
+  })
+  const attemptsRequest = request<PracticeAttempt[]>('/attempts').then((attempts) => {
+    attemptsCache = sortUpdated(attempts)
+    onPartial?.({ practices: attemptsCache })
+  })
+  const statsRequest = request<LearningStats>('/learning/stats').then((stats) => {
+    statsCache = stats
+    onPartial?.({ stats })
+  })
+  await Promise.all([
+    tasksRequest,
+    librariesRequest,
+    publicLibrariesRequest,
+    attemptsRequest,
+    statsRequest,
   ])
-  tasksCache = sortUpdated(tasks)
-  librariesCache = sortUpdated(libraries)
-  publicLibrariesCache = sortUpdated(publicLibraries)
-  attemptsCache = sortUpdated(attempts)
-  statsCache = stats
+  const attempts = attemptsCache
   activeAttempts.clear()
   attempts.forEach((attempt) => {
     if (attempt.status === 'in_progress') {
       activeAttempts.set(activeAttemptKey(attempt.taskId, attempt.kind ?? 'regular'), attempt)
     }
   })
-  if (authSession.current()?.role === 'admin') await refreshAdmin()
+  if (authSession.current()?.role === 'admin') {
+    await refreshAdmin()
+  }
 }
 
 const redactPayloadForRequest = (action: PendingAction): PendingAction => action
@@ -236,7 +276,7 @@ export const httpApi = {
     get: (taskId: string, _userId: string) => findTask(taskId),
     async refreshOne(taskId: string): Promise<LearningTask> {
       const task = await request<LearningTask>(`/tasks/${taskId}`)
-      tasksCache = sortUpdated(tasksCache.map((item) => (item.id === taskId ? task : item)))
+      tasksCache = sortUpdated([task, ...tasksCache.filter((item) => item.id !== taskId)])
       return task
     },
     async create(_userId: string, draft: TaskDraft): Promise<LearningTask> {
@@ -292,6 +332,28 @@ export const httpApi = {
     listMine: (_userId: string) => librariesCache,
     listPublic: (_userId: string) => publicLibrariesCache,
     get: (libraryId: string, _userId: string) => findLibrary(libraryId),
+    async refreshOne(libraryId: string): Promise<Vocabulary> {
+      const library = await request<Vocabulary>(`/vocabularies/${libraryId}`)
+      const replace = (items: Vocabulary[], include: boolean) =>
+        include || items.some((item) => item.id === libraryId)
+          ? sortUpdated([library, ...items.filter((item) => item.id !== libraryId)])
+          : items
+      librariesCache = replace(librariesCache, library.visibility !== 'public')
+      publicLibrariesCache = replace(publicLibrariesCache, library.visibility === 'public')
+      return library
+    },
+    async loadFullLists(): Promise<{
+      libraries: Vocabulary[]
+      publicLibraries: Vocabulary[]
+    }> {
+      const [libraries, publicLibraries] = await Promise.all([
+        request<Vocabulary[]>('/vocabularies?scope=mine&include_entries=true'),
+        request<Vocabulary[]>('/vocabularies?scope=public&include_entries=true'),
+      ])
+      librariesCache = sortUpdated(libraries)
+      publicLibrariesCache = sortUpdated(publicLibraries)
+      return { libraries: librariesCache, publicLibraries: publicLibrariesCache }
+    },
     async updateMetadata(
       _userId: string,
       libraryId: string,

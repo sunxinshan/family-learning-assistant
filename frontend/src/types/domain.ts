@@ -41,7 +41,9 @@ export interface Vocabulary {
   tags: string[]
   visibility: LibraryVisibility
   published: boolean
+  entryCount?: number
   entries: WordEntry[]
+  entriesIncluded?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -76,6 +78,7 @@ export interface LearningTask {
   libraryName: string
   config: TaskConfig
   snapshot: WordEntry[]
+  snapshotIncluded?: boolean
   createdAt: string
   updatedAt: string
 }
