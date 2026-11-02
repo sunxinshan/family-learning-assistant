@@ -9,7 +9,7 @@ npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-后端默认地址：`http://127.0.0.1:8000/api/v1`。可通过 `VITE_API_BASE_URL` 覆盖。
+前端默认使用同源 `/api/v1`；Vite 开发服务器会代理到 `http://127.0.0.1:8000`。可通过 `VITE_API_BASE_URL` 覆盖。
 
 ## 验证
 
