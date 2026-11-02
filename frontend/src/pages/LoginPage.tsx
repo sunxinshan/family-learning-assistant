@@ -43,15 +43,11 @@ export const LoginPage = () => {
     }
   }
 
-  const demoLogin = async (role: 'user' | 'admin') => {
+  const demoLogin = async (demoNickname: string, demoPassword: string) => {
     setBusy(true)
     setError('')
     try {
-      if (role === 'user') {
-        await login('Alice', 'demo123')
-      } else {
-        await login('Admin', 'admin123')
-      }
+      await login(demoNickname, demoPassword)
       navigate('/', { replace: true })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '演示登录失败')
@@ -162,7 +158,7 @@ export const LoginPage = () => {
           <div className="login-divider"><span>或使用演示账户</span></div>
 
           <div className="demo-login-grid">
-            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('user')}>
+            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('Alice', 'demo123')}>
               <span className="demo-login-icon"><UserRound size={18} /></span>
               <span>
                 <strong>普通用户</strong>
@@ -170,11 +166,19 @@ export const LoginPage = () => {
               </span>
               <ArrowRight size={15} />
             </button>
-            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('admin')}>
+            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('Admin', 'admin123')}>
               <span className="demo-login-icon"><ShieldCheck size={18} /></span>
               <span>
-                <strong>管理员</strong>
-                <small>公共词库与用户管理</small>
+                <strong>管理员 · Admin</strong>
+                <small>公共词库、任务与用户管理</small>
+              </span>
+              <ArrowRight size={15} />
+            </button>
+            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('Manager', 'manager123')}>
+              <span className="demo-login-icon"><ShieldCheck size={18} /></span>
+              <span>
+                <strong>管理员 · Manager</strong>
+                <small>第二个管理员演示账号</small>
               </span>
               <ArrowRight size={15} />
             </button>

@@ -4,6 +4,7 @@ import {
   BookOpenText,
   CheckCircle2,
   KeyRound,
+  ListChecks,
   Plus,
   ScrollText,
   ShieldCheck,
@@ -11,17 +12,14 @@ import {
   Users,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { adminApi, vocabularyApi } from '../api/mockApi'
 import {
   Badge,
   Button,
   EmptyState,
-  Field,
-  InlineError,
   Modal,
   PageHeader,
-  TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
 import type { LearningStats, User, Vocabulary } from '../types/domain'
@@ -41,11 +39,8 @@ export const AdminPage = () => {
   const [statsUser, setStatsUser] = useState<AdminUser | null>(null)
   const [resetUser, setResetUser] = useState<AdminUser | null>(null)
   const [passwordResult, setPasswordResult] = useState<{ user: string; password: string } | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
   const [deleteLibrary, setDeleteLibrary] = useState<Vocabulary | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [newLibrary, setNewLibrary] = useState({ name: '', description: '', category: '' })
 
   const users = useMemo<AdminUser[]>(
     () => (currentUser ? adminApi.listUsers(currentUser.id) : []),
@@ -61,33 +56,6 @@ export const AdminPage = () => {
   }, [currentUser, statsUser, publicLibraries])
 
   if (!currentUser || currentUser.role !== 'admin') return null
-
-  const createPublicLibrary = async () => {
-    if (!newLibrary.name.trim()) {
-      setError('请输入公共词库名称')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      const library = await vocabularyApi.createPublic(currentUser.id, {
-        name: newLibrary.name,
-        description: newLibrary.description,
-        category: newLibrary.category,
-        tags: ['公共资源'],
-        entries: [],
-      })
-      refresh()
-      setCreateOpen(false)
-      setNewLibrary({ name: '', description: '', category: '' })
-      showToast('公共词库草稿已创建', 'success')
-      navigate(`/vocabulary/${library.id}`)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '创建失败')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const togglePublish = async (library: Vocabulary) => {
     setBusy(true)
@@ -139,13 +107,20 @@ export const AdminPage = () => {
         title="管理后台"
         description="管理用户账户和公共词库，并查看关键操作日志。管理员不能代替用户修改学习结果。"
         actions={
-          tab === 'vocabularies' ? (
-            <Button variant="primary" icon={Plus} onClick={() => setCreateOpen(true)}>
-              新建公共词库
-            </Button>
-          ) : (
-            <Badge tone="info"><ShieldCheck size={12} />管理员权限</Badge>
-          )
+          <>
+            <Link className="button button-secondary button-md" to="/tasks/new">
+              <ListChecks size={16} />
+              页面创建任务
+            </Link>
+            {tab === 'vocabularies' ? (
+              <Link className="button button-primary button-md" to="/vocabulary/new?scope=public">
+                <Plus size={16} />
+                新建公共词库
+              </Link>
+            ) : (
+              <Badge tone="info"><ShieldCheck size={12} />管理员权限</Badge>
+            )}
+          </>
         }
       />
 
@@ -289,7 +264,7 @@ export const AdminPage = () => {
               icon={BookOpenText}
               title="还没有公共词库"
               description="创建第一份公共词库草稿，添加词条后即可发布。"
-              action={<Button variant="primary" icon={Plus} onClick={() => setCreateOpen(true)}>新建公共词库</Button>}
+              action={<Link className="button button-primary button-md" to="/vocabulary/new?scope=public">新建公共词库</Link>}
             />
           ) : null}
         </section>
@@ -394,47 +369,6 @@ export const AdminPage = () => {
             <small>正式系统不应在界面中永久展示明文密码。</small>
           </div>
         ) : null}
-      </Modal>
-
-      <Modal
-        open={createOpen}
-        title="新建公共词库"
-        description="新词库以草稿状态创建，添加词条后可发布。"
-        onClose={() => setCreateOpen(false)}
-        footer={
-          <>
-            <Button onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button variant="primary" loading={busy} onClick={() => void createPublicLibrary()}>
-              创建草稿
-            </Button>
-          </>
-        }
-      >
-        <div className="form-stack">
-          {error ? <InlineError>{error}</InlineError> : null}
-          <Field label="词库名称">
-            <TextInput
-              value={newLibrary.name}
-              onChange={(event) => setNewLibrary({ ...newLibrary, name: event.target.value })}
-              autoFocus
-            />
-          </Field>
-          <Field label="分类">
-            <TextInput
-              value={newLibrary.category}
-              onChange={(event) => setNewLibrary({ ...newLibrary, category: event.target.value })}
-              placeholder="例如：家庭学习"
-            />
-          </Field>
-          <Field label="描述">
-            <textarea
-              className="text-area"
-              rows={3}
-              value={newLibrary.description}
-              onChange={(event) => setNewLibrary({ ...newLibrary, description: event.target.value })}
-            />
-          </Field>
-        </div>
       </Modal>
 
       <Modal

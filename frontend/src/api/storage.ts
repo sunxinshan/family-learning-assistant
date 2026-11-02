@@ -44,17 +44,19 @@ const DEMO_USER_NAMES: Record<string, string> = {
   'user-1': 'Alice',
   'user-2': 'Bob',
   'admin-1': 'Admin',
+  'admin-2': 'Manager',
 }
 
 const migrateDemoUserNames = (): void => {
   const users = read<User[]>(STORAGE_KEYS.users, [])
   if (users.length) {
-    write(
-      STORAGE_KEYS.users,
-      users.map((user) =>
-        DEMO_USER_NAMES[user.id] ? { ...user, nickname: DEMO_USER_NAMES[user.id] } : user,
-      ),
+    const renamed = users.map((user) =>
+      DEMO_USER_NAMES[user.id] ? { ...user, nickname: DEMO_USER_NAMES[user.id] } : user,
     )
+    const missingDemoAdmins = seedUsers.filter(
+      (seedUser) => seedUser.role === 'admin' && !renamed.some((user) => user.id === seedUser.id),
+    )
+    write(STORAGE_KEYS.users, [...renamed, ...missingDemoAdmins])
   }
   const logs = read<OperationLog[]>(STORAGE_KEYS.logs, [])
   if (logs.length) {

@@ -54,6 +54,15 @@ export const seedUsers: User[] = [
     lastActiveAt: '2026-11-02T09:55:00+08:00',
     demoPassword: 'admin123',
   },
+  {
+    id: 'admin-2',
+    nickname: 'Manager',
+    role: 'admin',
+    status: 'active',
+    createdAt: '2026-10-20T10:30:00+08:00',
+    lastActiveAt: '2026-11-01T18:20:00+08:00',
+    demoPassword: 'manager123',
+  },
 ]
 
 const dailyWords: WordEntry[] = [

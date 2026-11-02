@@ -7,8 +7,10 @@ import {
 } from 'lucide-react'
 import {
   useEffect,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react'
@@ -225,6 +227,63 @@ export const Field = ({
     {error ? <span className="field-error">{error}</span> : null}
   </label>
 )
+
+export const TagInput = ({
+  value,
+  onChange,
+  placeholder = '输入标签后按 Enter',
+}: {
+  value: string[]
+  onChange: (tags: string[]) => void
+  placeholder?: string
+}) => {
+  const [draft, setDraft] = useState('')
+
+  const commit = () => {
+    const tag = draft.trim().replace(/^#/, '')
+    if (!tag) return
+    if (!value.some((item) => item.toLowerCase() === tag.toLowerCase())) {
+      onChange([...value, tag])
+    }
+    setDraft('')
+  }
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'Enter' || event.key === ',' || event.key === '，') {
+      event.preventDefault()
+      commit()
+      return
+    }
+    if (event.key === 'Backspace' && !draft && value.length) {
+      onChange(value.slice(0, -1))
+    }
+  }
+
+  return (
+    <div className="tag-input">
+      {value.map((tag) => (
+        <span className="tag-item" key={tag}>
+          {tag}
+          <button
+            type="button"
+            aria-label={`移除标签 ${tag}`}
+            onClick={() => onChange(value.filter((item) => item !== tag))}
+          >
+            <X size={11} />
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        placeholder={value.length ? '' : placeholder}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={commit}
+      />
+    </div>
+  )
+}
 
 export const TextInput = ({
   className = '',

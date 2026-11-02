@@ -27,8 +27,9 @@ http://127.0.0.1:5173
 |---|---|---|
 | 普通用户 | Alice | `demo123` |
 | 管理员 | Admin | `admin123` |
+| 管理员 | Manager | `manager123` |
 
-登录页也提供普通用户和管理员的一键演示入口。
+登录页提供普通用户和两个管理员账号的一键演示入口。
 
 ## 常用命令
 
@@ -53,8 +54,10 @@ npm run preview    # 预览生产构建
 | `/login` | 登录与注册 |
 | `/` | Agent 对话 |
 | `/tasks` | 学习任务列表 |
+| `/tasks/new` | 页面创建学习任务 |
 | `/tasks/:taskId` | 任务详情 |
 | `/vocabulary` | 个人/公共词库 |
+| `/vocabulary/new` | 页面创建词库、Excel 导入 |
 | `/vocabulary/:libraryId` | 词库详情 |
 | `/learning` | 学习记录 |
 | `/admin` | 管理员后台 |

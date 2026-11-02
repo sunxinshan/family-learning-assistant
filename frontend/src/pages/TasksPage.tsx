@@ -1,4 +1,4 @@
-import { MessageSquarePlus, Search } from 'lucide-react'
+import { MessageSquarePlus, Plus, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, EmptyState, PageHeader } from '../components/ui'
@@ -38,10 +38,16 @@ export const TasksPage = () => {
         title="学习任务"
         description="从任务进入独立练习页面，继续未完成的进度或回顾已完成内容。"
         actions={
-          <Link className="button button-primary button-md" to="/">
-            <MessageSquarePlus size={16} />
-            通过 Agent 创建
-          </Link>
+          <>
+            <Link className="button button-primary button-md" to="/tasks/new">
+              <Plus size={16} />
+              页面创建
+            </Link>
+            <Link className="button button-secondary button-md" to="/">
+              <MessageSquarePlus size={16} />
+              通过 Agent 创建
+            </Link>
+          </>
         }
       />
 
@@ -121,8 +127,8 @@ export const TasksPage = () => {
                 >
                   清除筛选
                 </Button>
-                <Link className="button button-primary button-md" to="/">
-                  打开学习助手
+                <Link className="button button-primary button-md" to="/tasks/new">
+                  页面创建任务
                 </Link>
               </div>
             }

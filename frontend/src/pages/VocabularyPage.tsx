@@ -15,11 +15,7 @@ import {
   Badge,
   Button,
   EmptyState,
-  Field,
-  InlineError,
-  Modal,
   PageHeader,
-  TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
 import type { Vocabulary } from '../types/domain'
@@ -98,11 +94,7 @@ export const VocabularyPage = () => {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('personal')
   const [query, setQuery] = useState('')
-  const [createOpen, setCreateOpen] = useState(false)
   const [copyingId, setCopyingId] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [draft, setDraft] = useState({ name: '', description: '', category: '' })
 
   const source = tab === 'personal' ? libraries : publicLibraries
   const filtered = useMemo(
@@ -130,34 +122,6 @@ export const VocabularyPage = () => {
     }
   }
 
-  const createLibrary = async () => {
-    if (!currentUser) return
-    if (!draft.name.trim()) {
-      setError('请输入词库名称')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      const library = await vocabularyApi.create(currentUser.id, {
-        name: draft.name,
-        description: draft.description,
-        category: draft.category,
-        tags: [],
-        entries: [],
-      })
-      refresh()
-      setCreateOpen(false)
-      setDraft({ name: '', description: '', category: '' })
-      showToast('个人词库已创建', 'success')
-      navigate(`/vocabulary/${library.id}`)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '创建失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <main className="page-container vocabulary-page">
       <PageHeader
@@ -170,9 +134,10 @@ export const VocabularyPage = () => {
               <Sparkles size={16} />
               从 Agent 整理
             </Link>
-            <Button variant="primary" icon={Plus} onClick={() => setCreateOpen(true)}>
+            <Link className="button button-primary button-md" to="/vocabulary/new">
+              <Plus size={16} />
               新建词库
-            </Button>
+            </Link>
           </>
         }
       />
@@ -243,58 +208,16 @@ export const VocabularyPage = () => {
               }
               action={
                 !query && tab === 'personal' ? (
-                  <Button variant="primary" icon={Plus} onClick={() => setCreateOpen(true)}>
+                  <Link className="button button-primary button-md" to="/vocabulary/new">
+                    <Plus size={16} />
                     新建个人词库
-                  </Button>
+                  </Link>
                 ) : undefined
               }
             />
           </div>
         )}
       </section>
-
-      <Modal
-        open={createOpen}
-        title="新建个人词库"
-        description="创建后可以添加词条，也可以让 Agent 继续整理内容。"
-        onClose={() => setCreateOpen(false)}
-        footer={
-          <>
-            <Button onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button variant="primary" loading={busy} onClick={() => void createLibrary()}>
-              创建词库
-            </Button>
-          </>
-        }
-      >
-        <div className="form-stack">
-          {error ? <InlineError>{error}</InlineError> : null}
-          <Field label="词库名称">
-            <TextInput
-              value={draft.name}
-              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              placeholder="例如：家庭阅读 · 十一月"
-              autoFocus
-            />
-          </Field>
-          <Field label="分类">
-            <TextInput
-              value={draft.category}
-              onChange={(event) => setDraft({ ...draft, category: event.target.value })}
-              placeholder="例如：日常表达"
-            />
-          </Field>
-          <Field label="描述">
-            <textarea
-              className="text-area"
-              value={draft.description}
-              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-              placeholder="说明词库的用途或来源"
-              rows={3}
-            />
-          </Field>
-        </div>
-      </Modal>
     </main>
   )
 }

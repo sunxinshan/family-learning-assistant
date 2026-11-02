@@ -26,8 +26,10 @@ const baseNav = [
 
 const titleForPath = (pathname: string): string => {
   if (pathname === '/') return '学习助手'
+  if (pathname === '/tasks/new') return '新建学习任务'
   if (pathname.startsWith('/tasks/')) return '任务详情'
   if (pathname === '/tasks') return '学习任务'
+  if (pathname === '/vocabulary/new') return '新建词库'
   if (pathname.startsWith('/vocabulary/')) return '词库详情'
   if (pathname === '/vocabulary') return '词库'
   if (pathname === '/learning') return '学习记录'

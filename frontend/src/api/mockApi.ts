@@ -284,6 +284,37 @@ export const vocabularyApi = {
     return library
   },
 
+  async updateMetadata(
+    userId: string,
+    libraryId: string,
+    changes: Pick<Vocabulary, 'name' | 'description' | 'category' | 'tags'>,
+  ): Promise<Vocabulary> {
+    await pause()
+    const user = requireUser(userId)
+    const library = vocabularyApi.get(libraryId, userId)
+    if (library.ownerId !== userId && !(user.role === 'admin' && library.visibility === 'public')) {
+      throw new Error('你只能编辑自己的词库信息')
+    }
+    const name = changes.name.trim()
+    if (!name) throw new Error('词库名称不能为空')
+    const updated: Vocabulary = {
+      ...library,
+      name,
+      description: changes.description.trim(),
+      category: changes.category.trim() || '未分类',
+      tags: [...new Set(changes.tags.map((tag) => tag.trim()).filter(Boolean))],
+      updatedAt: now(),
+    }
+    storage.setVocabularies(
+      storage.getVocabularies().map((candidate) =>
+        candidate.id === library.id ? updated : candidate,
+      ),
+    )
+    appendLog(user, '编辑词库信息', `${library.name} → ${updated.name}`)
+    notifyDataChanged()
+    return updated
+  },
+
   async create(userId: string, draft: VocabularyDraft): Promise<Vocabulary> {
     await pause()
     const user = requireUser(userId)

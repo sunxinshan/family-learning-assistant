@@ -23,6 +23,7 @@ import {
   InlineError,
   Modal,
   PageHeader,
+  TagInput,
   TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
@@ -59,6 +60,9 @@ export const VocabularyDetailPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [batchEditOpen, setBatchEditOpen] = useState(false)
   const [batchPartOfSpeech, setBatchPartOfSpeech] = useState('')
+  const [metadataOpen, setMetadataOpen] = useState(false)
+  const [metadataDraft, setMetadataDraft] = useState({ name: '', description: '', category: '', tags: [] as string[] })
+  const [metadataError, setMetadataError] = useState('')
 
   const editable = Boolean(
     library &&
@@ -91,6 +95,36 @@ export const VocabularyDetailPage = () => {
 
   const allSelected = filtered.length > 0 && filtered.every((entry) => selected.includes(entry.id))
   const selectedEntries = library.entries.filter((entry) => selected.includes(entry.id))
+
+  const openMetadata = () => {
+    setMetadataDraft({
+      name: library.name,
+      description: library.description,
+      category: library.category,
+      tags: [...library.tags],
+    })
+    setMetadataError('')
+    setMetadataOpen(true)
+  }
+
+  const saveMetadata = async () => {
+    if (!metadataDraft.name.trim()) {
+      setMetadataError('词库名称不能为空')
+      return
+    }
+    setBusy(true)
+    setMetadataError('')
+    try {
+      await vocabularyApi.updateMetadata(currentUser.id, library.id, metadataDraft)
+      refresh()
+      setMetadataOpen(false)
+      showToast('词库信息已更新', 'success')
+    } catch (cause) {
+      setMetadataError(cause instanceof Error ? cause.message : '保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const openNew = () => {
     setEntryDraft(blankEntry())
@@ -211,7 +245,10 @@ export const VocabularyDetailPage = () => {
         description={library.description || '暂无描述'}
         actions={
           editable ? (
-            <Button variant="primary" icon={Plus} onClick={openNew}>添加词条</Button>
+            <>
+              <Button icon={Pencil} onClick={openMetadata}>编辑词库信息</Button>
+              <Button variant="primary" icon={Plus} onClick={openNew}>添加词条</Button>
+            </>
           ) : (
             <Button variant="primary" icon={Download} loading={busy} onClick={() => void copyLibrary()}>
               复制为个人词库
@@ -358,6 +395,54 @@ export const VocabularyDetailPage = () => {
           这是公共词库的只读视图。复制后可独立添加、编辑或删除词条，不影响公共源。
         </div>
       ) : null}
+
+      <Modal
+        open={metadataOpen}
+        title="编辑词库信息"
+        description="名称、描述、分类和标签都可以修改；标签支持自定义。"
+        onClose={() => setMetadataOpen(false)}
+        footer={
+          <>
+            <Button onClick={() => setMetadataOpen(false)}>取消</Button>
+            <Button variant="primary" loading={busy} onClick={() => void saveMetadata()}>
+              保存修改
+            </Button>
+          </>
+        }
+      >
+        <div className="form-stack">
+          {metadataError ? <InlineError>{metadataError}</InlineError> : null}
+          <div className="form-grid-two">
+            <Field label="词库名称">
+              <TextInput
+                value={metadataDraft.name}
+                onChange={(event) => setMetadataDraft({ ...metadataDraft, name: event.target.value })}
+                autoFocus
+              />
+            </Field>
+            <Field label="分类">
+              <TextInput
+                value={metadataDraft.category}
+                onChange={(event) => setMetadataDraft({ ...metadataDraft, category: event.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="描述">
+            <textarea
+              className="text-area"
+              rows={3}
+              value={metadataDraft.description}
+              onChange={(event) => setMetadataDraft({ ...metadataDraft, description: event.target.value })}
+            />
+          </Field>
+          <Field label="标签" hint="按 Enter 或逗号添加自定义标签">
+            <TagInput
+              value={metadataDraft.tags}
+              onChange={(tags) => setMetadataDraft({ ...metadataDraft, tags })}
+            />
+          </Field>
+        </div>
+      </Modal>
 
       <Modal
         open={Boolean(entryDraft)}
