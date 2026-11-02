@@ -21,7 +21,7 @@ import {
   Modal,
   PageHeader,
 } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type { LearningStats, User, Vocabulary } from '../types/domain'
 import { formatDateTime } from '../utils/format'
 

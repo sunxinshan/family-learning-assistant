@@ -8,7 +8,7 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { AppShell } from '../layouts/AppShell'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 
 const LoginPage = lazy(() => import('../pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({ default: module.ChatPage })))

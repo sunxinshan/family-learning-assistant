@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import { Button, IconButton, Modal } from '../components/ui'
 
 const baseNav = [

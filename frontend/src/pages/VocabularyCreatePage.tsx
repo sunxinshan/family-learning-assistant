@@ -22,7 +22,7 @@ import {
   TagInput,
   TextInput,
 } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type { Subject, WordEntry } from '../types/domain'
 import { downloadVocabularyTemplate, parseVocabularyFile } from '../utils/excel'
 

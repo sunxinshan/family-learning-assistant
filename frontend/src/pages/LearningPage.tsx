@@ -13,7 +13,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { learningApi } from '../api/mockApi'
 import { Badge, EmptyState, PageHeader, ProgressBar } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type { TaskType } from '../types/domain'
 import { formatDateTime, practicePath, taskTypeLabel } from '../utils/format'
 

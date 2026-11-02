@@ -22,7 +22,7 @@ import {
   SelectInput,
   TextInput,
 } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type {
   DictationHint,
   DictationMode,

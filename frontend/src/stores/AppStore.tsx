@@ -1,8 +1,5 @@
-/* @refresh reset */
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -17,32 +14,9 @@ import type {
   User,
   Vocabulary,
 } from '../types/domain'
+import { AppStoreContext, type AppStoreValue, type ToastState } from './AppStoreContext'
 
 initializeStorage()
-
-interface ToastState {
-  id: number
-  message: string
-  tone: 'default' | 'success' | 'danger'
-}
-
-interface AppStoreValue {
-  currentUser: User | null
-  tasks: LearningTask[]
-  libraries: Vocabulary[]
-  publicLibraries: Vocabulary[]
-  practices: PracticeAttempt[]
-  isLoading: boolean
-  toast: ToastState | null
-  login: (nickname: string, password: string) => Promise<User>
-  register: (nickname: string, password: string) => Promise<User>
-  logout: () => void
-  resetDemo: () => void
-  refresh: () => void
-  showToast: (message: string, tone?: ToastState['tone']) => void
-}
-
-const AppStoreContext = createContext<AppStoreValue | null>(null)
 
 export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => authApi.current())
@@ -146,12 +120,3 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>
 }
-
-export const useAppStore = (): AppStoreValue => {
-  const context = useContext(AppStoreContext)
-  if (!context) {
-    throw new Error('useAppStore must be used inside AppStoreProvider')
-  }
-  return context
-}
-

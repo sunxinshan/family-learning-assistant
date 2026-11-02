@@ -23,7 +23,7 @@ import { conversationApi } from '../api/mockApi'
 import { mockAgent } from '../api/mockAgent'
 import { AgentAvatar, ChatMessageItem } from '../features/conversation/MessageComponents'
 import { Badge, Button, IconButton, Modal } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type {
   AgentEvent,
   ChatMessage,

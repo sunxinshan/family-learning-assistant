@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, EmptyState, PageHeader } from '../components/ui'
 import { TaskCard } from '../features/task/TaskCard'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type { TaskStatus, TaskType } from '../types/domain'
 
 type StatusFilter = 'all' | TaskStatus

@@ -12,7 +12,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { practiceApi } from '../api/mockApi'
 import { PracticeLayout } from '../features/practice/PracticeLayout'
 import { Badge, Button, EmptyState } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type { LearningTask, PracticeAttempt } from '../types/domain'
 import { formatDuration } from '../utils/format'
 

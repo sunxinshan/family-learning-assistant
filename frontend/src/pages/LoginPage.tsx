@@ -11,7 +11,7 @@ import {
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Badge, Button, Field, InlineError, Modal, TextInput } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 
 export const LoginPage = () => {
   const { currentUser, login, register, resetDemo } = useAppStore()

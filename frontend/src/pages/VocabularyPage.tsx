@@ -17,7 +17,7 @@ import {
   EmptyState,
   PageHeader,
 } from '../components/ui'
-import { useAppStore } from '../stores/AppStore'
+import { useAppStore } from '../stores/AppStoreContext'
 import type { Subject, Vocabulary } from '../types/domain'
 import { formatShortDate } from '../utils/format'
 
