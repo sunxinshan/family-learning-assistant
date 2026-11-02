@@ -137,6 +137,47 @@ export const TaskActionEditor = ({
     }
   }
 
+  const selectedEntries = selectedLibrary
+    ? selectedLibrary.entries.filter((entry) => selectedIds.has(entry.id))
+    : []
+  const unselectedEntries = selectedLibrary
+    ? selectedLibrary.entries.filter((entry) => !selectedIds.has(entry.id))
+    : []
+  const groupSize = fixed ? Math.max(selectedEntries.length, 1) : Math.max(draft.wordsPerGroup, 1)
+  const selectedGroups = Array.from(
+    { length: Math.ceil(selectedEntries.length / groupSize) },
+    (_, groupIndex) => {
+      const entries = selectedEntries.slice(
+        groupIndex * groupSize,
+        (groupIndex + 1) * groupSize,
+      )
+      return {
+        groupIndex: groupIndex + 1,
+        entries,
+        start: groupIndex * groupSize + 1,
+        end: groupIndex * groupSize + entries.length,
+      }
+    },
+  )
+  const originalIndex = (entryId: string) =>
+    (selectedLibrary?.entries.findIndex((entry) => entry.id === entryId) ?? -1) + 1
+
+  const entryRow = (entry: NonNullable<typeof selectedLibrary>['entries'][number]) => (
+    <label
+      key={entry.id}
+      className={`task-action-word-row ${selectedIds.has(entry.id) ? 'is-selected' : ''}`}
+    >
+      <input
+        type="checkbox"
+        checked={selectedIds.has(entry.id)}
+        onChange={() => toggleEntry(entry.id)}
+      />
+      <span>{String(originalIndex(entry.id)).padStart(2, '0')}</span>
+      <strong>{entry.word}</strong>
+      <small>{entry.meanings.join('；')}</small>
+    </label>
+  )
+
   return (
     <div className="task-action-editor">
       <div className="form-stack">
@@ -233,21 +274,26 @@ export const TaskActionEditor = ({
             </InlineError>
           ) : null}
           <div className="task-action-word-list">
-            {selectedLibrary?.entries.map((entry, index) => (
-              <label
-                key={entry.id}
-                className={`task-action-word-row ${selectedIds.has(entry.id) ? 'is-selected' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(entry.id)}
-                  onChange={() => toggleEntry(entry.id)}
-                />
-                <span>{String(index + 1).padStart(2, '0')}</span>
-                <strong>{entry.word}</strong>
-                <small>{entry.meanings.join('；')}</small>
-              </label>
+            {selectedGroups.map((group) => (
+              <section className="task-action-group-section" key={group.groupIndex}>
+                <header className="task-action-group-heading">
+                  <strong>第 {group.groupIndex} 组</strong>
+                  <span>
+                    词条 {group.start}-{group.end} · 组内 {group.entries.length}/{groupSize}
+                  </span>
+                </header>
+                <div>{group.entries.map((entry) => entryRow(entry))}</div>
+              </section>
             ))}
+            {unselectedEntries.length ? (
+              <details className="task-action-unselected" open={!selectedEntries.length}>
+                <summary>未选择词条 · {unselectedEntries.length} 项</summary>
+                <div>{unselectedEntries.map((entry) => entryRow(entry))}</div>
+              </details>
+            ) : null}
+            {!selectedEntries.length && !unselectedEntries.length ? (
+              <div className="task-action-word-empty">当前词库没有词条。</div>
+            ) : null}
           </div>
         </div>
 
