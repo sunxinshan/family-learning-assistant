@@ -109,7 +109,11 @@ def _prepare_task_action(state: AgentState, service: "AgentBusinessService") -> 
     }
     mode = "fixed" if "固定" in text else "long_term"
     draft = {
-        "name": quoted if quoted and "任务" not in quoted else f"{library.name} · 听写",
+        "name": (
+            quoted
+            if quoted and "任务" not in quoted and quoted not in library.name
+            else f"{library.name} · 听写"
+        ),
         "type": "dictation",
         "mode": mode,
         "targetCount": len(selected_ids),

@@ -8,3 +8,5 @@ htmlcov/
 .env
 data/*.db
 data/*.db-*
+data/uploads/
+data/*.db.*

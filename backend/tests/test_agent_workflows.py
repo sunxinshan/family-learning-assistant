@@ -384,3 +384,42 @@ def test_active_run_endpoint_restores_pending_action(client: TestClient) -> None
     assert active.status_code == 200, active.text
     assert active.json()["id"] == confirmation["run_id"]
     assert active.json()["pendingAction"]["operation"] == "create_task"
+
+
+def test_task_create_without_library_keeps_actionable_message(client: TestClient) -> None:
+    token = login(client)
+    events = start_run(client, token, "创建任务，选择所有单词")
+    message = find_event(events, "message")
+    assert "当前没有可用词库" in message["data"]["content"]
+
+
+def test_sse_disconnect_does_not_cancel_background_run(client: TestClient) -> None:
+    token = login(client)
+    library = create_library(client, token)
+    with client.stream(
+        "POST",
+        "/api/v1/agent/runs/stream",
+        headers=auth(token),
+        json={"message": f"创建任务，选择「{library['name']}」的所有单词"},
+    ) as response:
+        assert response.status_code == 200
+        first_data = next(line[6:] for line in response.iter_lines() if line.startswith("data: "))
+    first = json.loads(first_data)
+    run_id = first["run_id"]
+
+    deadline = 5.0
+    status = "running"
+    while deadline > 0 and status == "running":
+        run = client.get(f"/api/v1/agent/runs/{run_id}", headers=auth(token)).json()
+        status = run["status"]
+        if status == "running":
+            import time
+
+            time.sleep(0.05)
+            deadline -= 0.05
+    assert status == "waiting_confirmation"
+
+    replay = client.get(f"/api/v1/agent/runs/{run_id}/events?after_sequence=1", headers=auth(token))
+    events = parse_sse(replay.text)
+    assert {event["type"] for event in events} >= {"message", "confirmation_required", "done"}
+    assert all(event["sequence"] > 1 for event in events)

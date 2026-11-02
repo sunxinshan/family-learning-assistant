@@ -271,6 +271,12 @@ class VocabularyService:
         interval_index = min(max(state.correct_streak - 1, 0), len(review_intervals) - 1)
         state.next_review_at = now + timedelta(days=review_intervals[interval_index])
 
+    def delete(self, library_id: str, user_id: str, role: str) -> None:
+        library = self.get_accessible(library_id, user_id, role)
+        if not self._can_edit(library, user_id, role):
+            raise AppError("forbidden", "你无权删除该词库", status_code=403)
+        self.repository.delete(library)
+
     def publish(self, library_id: str, admin_id: str, role: str, published: bool) -> Vocabulary:
         if role != "admin":
             raise AppError("forbidden", "仅管理员可以发布公共词库", status_code=403)

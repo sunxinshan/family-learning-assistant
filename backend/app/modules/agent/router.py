@@ -28,8 +28,9 @@ def run_agent(
     context: RuntimeContext = Depends(get_runtime_context),
     runtime: AgentRuntime = Depends(get_runtime),
 ) -> StreamingResponse:
+    run_id = runtime.start_run(context.user_id, context.role, payload.message, payload.material_id)
     return StreamingResponse(
-        runtime.run(context.user_id, context.role, payload.message, payload.material_id),
+        runtime.stream_run(run_id, context.user_id),
         media_type="text/event-stream",
     )
 
@@ -150,14 +151,15 @@ def confirm_action(
         payload.draft_version,
         payload.config_hash,
     )
+    _, after_sequence = runtime.start_confirm(
+        run_id,
+        context.user_id,
+        run_id,
+        payload.draft_version,
+        payload.config_hash,
+    )
     return StreamingResponse(
-        runtime.confirm(
-            run_id,
-            context.user_id,
-            run_id,
-            payload.draft_version,
-            payload.config_hash,
-        ),
+        runtime.stream_run(run_id, context.user_id, after_sequence),
         media_type="text/event-stream",
     )
 

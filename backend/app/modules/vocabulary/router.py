@@ -78,6 +78,16 @@ def copy_vocabulary(
     return vocabulary_to_out(service.copy(library_id, context.user_id, context.role))
 
 
+@router.delete("/vocabularies/{library_id}", status_code=204)
+def delete_vocabulary(
+    library_id: str,
+    context: RuntimeContext = Depends(get_runtime_context),
+    service: VocabularyService = Depends(get_vocabulary_service),
+) -> Response:
+    service.delete(library_id, context.user_id, context.role)
+    return Response(status_code=204)
+
+
 @router.post("/vocabularies/{library_id}/entries", response_model=VocabularyOut, status_code=201)
 def add_entries(
     library_id: str,
