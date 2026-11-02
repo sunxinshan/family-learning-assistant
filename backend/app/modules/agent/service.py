@@ -214,11 +214,16 @@ def _update_changes_from_text(
     if "强制答对" in text or "必须答对" in text:
         config["repeatUntilCorrect"] = True
     renamed = re.search(r"改名为[「“\"]([^」”\"]+)[」”\"]", text)
+    requested_mode = task.mode
+    if "长期任务" in text or "长周期" in text:
+        requested_mode = "long_term"
+    elif "固定任务" in text:
+        requested_mode = "fixed"
     return {
         "name": renamed.group(1) if renamed else task.name,
         "config": config,
         "targetCount": task.target_count,
-        "mode": task.mode,
+        "mode": requested_mode,
     }
 
 

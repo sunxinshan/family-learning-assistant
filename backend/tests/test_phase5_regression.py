@@ -257,3 +257,30 @@ def test_deleting_task_cascades_practice_facts(client: TestClient, app: FastAPI)
     with app.state.database.session() as session:
         assert session.scalar(select(func.count()).select_from(PracticeAttempt)) == 0
         assert session.scalar(select(func.count()).select_from(PracticeAnswer)) == 0
+
+
+def test_task_mode_can_be_changed_without_replacing_snapshot(client: TestClient) -> None:
+    token = login(client)
+    library = create_library(client, token)
+    task = create_task(client, token, library, mode="fixed")
+    snapshot_ids = [entry["id"] for entry in task["snapshot"]]
+    switched = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        headers=auth(token),
+        json={"name": "Long Mode", "mode": "long_term", "wordsPerGroup": 1},
+    )
+    assert switched.status_code == 200, switched.text
+    body = switched.json()
+    assert body["mode"] == "long_term"
+    assert body["config"]["wordsPerGroup"] == 1
+    assert body["config"]["totalGroups"] == 2
+    assert [entry["id"] for entry in body["snapshot"]] == snapshot_ids
+
+    fixed_again = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        headers=auth(token),
+        json={"name": "Fixed Again", "mode": "fixed"},
+    )
+    assert fixed_again.status_code == 200, fixed_again.text
+    assert fixed_again.json()["mode"] == "fixed"
+    assert fixed_again.json()["config"]["totalGroups"] == 1

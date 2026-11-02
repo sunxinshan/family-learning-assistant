@@ -71,9 +71,12 @@ test('real HTTP flow: server import, agent confirmation, active restore, offline
 
   await page.getByRole('button', { name: '编辑' }).click()
   await page.getByLabel('任务名称').fill(`${libraryName} Edited`)
+  await page.getByLabel('任务模式').selectOption('long_term')
+  await page.getByLabel('每组数量').fill('1')
   await page.getByLabel('朗读内容').selectOption('meaning')
   await page.getByRole('button', { name: '保存修改' }).click()
   await expect(page.getByRole('heading', { name: `${libraryName} Edited` })).toBeVisible()
+  await expect(page.getByText('长期任务', { exact: true }).first()).toBeVisible()
 
   await page.goto('/tasks')
   const taskCard = page.locator('.task-card').filter({ hasText: `${libraryName} Edited` }).first()

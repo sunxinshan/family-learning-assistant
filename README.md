@@ -46,7 +46,7 @@ npm run test:e2e
 npm audit --audit-level=high
 ```
 
-当前记录：后端 63 passed、桌面+移动 E2E 6 passed、MySQL 8.4.7 全量通过。
+当前记录：后端 64 passed、桌面+移动 E2E 6 passed、MySQL 8.4.7 全量通过。
 
 ## 文档
 

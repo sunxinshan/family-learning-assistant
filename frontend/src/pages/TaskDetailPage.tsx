@@ -54,6 +54,7 @@ export const TaskDetailPage = () => {
   const [deleteStage, setDeleteStage] = useState<0 | 1 | 2>(0)
   const [name, setName] = useState(task?.name ?? '')
   const [wordsPerGroup, setWordsPerGroup] = useState(task?.config.wordsPerGroup ?? 0)
+  const [taskMode, setTaskMode] = useState<'fixed' | 'long_term'>(task?.mode ?? 'fixed')
   const [repeatUntilCorrect, setRepeatUntilCorrect] = useState(
     task?.config.repeatUntilCorrect ?? false,
   )
@@ -90,6 +91,7 @@ export const TaskDetailPage = () => {
   const openEditor = () => {
     setName(task.name)
     setWordsPerGroup(task.config.wordsPerGroup)
+    setTaskMode(task.mode)
     setRepeatUntilCorrect(task.config.repeatUntilCorrect)
     setDictationMode(task.config.dictation?.mode ?? 'online')
     setPlaybackMode(task.config.dictation?.playbackMode ?? 'manual')
@@ -105,7 +107,7 @@ export const TaskDetailPage = () => {
       setError('任务名称不能为空')
       return
     }
-    if (!fixed && (wordsPerGroup < 1 || wordsPerGroup > task.targetCount)) {
+    if (taskMode === 'long_term' && (wordsPerGroup < 1 || wordsPerGroup > task.targetCount)) {
       setError('每组数量不能大于已选词条数量')
       return
     }
@@ -114,11 +116,12 @@ export const TaskDetailPage = () => {
     try {
       await api.task.update(currentUser.id, task.id, {
         name: name.trim(),
+        mode: taskMode,
         config: {
           ...task.config,
           questionCount: task.targetCount,
-          wordsPerGroup: fixed ? task.targetCount : wordsPerGroup,
-          totalGroups: fixed ? 1 : Math.ceil(task.targetCount / wordsPerGroup),
+          wordsPerGroup: taskMode === 'fixed' ? task.targetCount : wordsPerGroup,
+          totalGroups: taskMode === 'fixed' ? 1 : Math.ceil(task.targetCount / wordsPerGroup),
           repeatUntilCorrect,
           dictation: {
             mode: dictationMode,
@@ -373,7 +376,16 @@ export const TaskDetailPage = () => {
           <Field label="任务名称">
             <TextInput value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
-          {!fixed ? (
+          <Field label="任务模式">
+            <SelectInput
+              value={taskMode}
+              onChange={(event) => setTaskMode(event.target.value as 'fixed' | 'long_term')}
+            >
+              <option value="fixed">固定任务</option>
+              <option value="long_term">长期任务</option>
+            </SelectInput>
+          </Field>
+          {taskMode === 'long_term' ? (
             <Field label="每组数量" hint={`已选 ${task.targetCount} 项词条`}>
               <TextInput
                 type="number"

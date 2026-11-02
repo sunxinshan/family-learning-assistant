@@ -35,6 +35,7 @@ class TaskCreate(CamelModel):
 
 class TaskUpdate(CamelModel):
     name: str = Field(min_length=1, max_length=180)
+    mode: Literal["fixed", "long_term"] | None = None
     words_per_group: int | None = Field(default=None, ge=1)
     repeat_until_correct: bool | None = None
     dictation: DictationConfig | None = None

@@ -205,20 +205,34 @@ class TaskService:
 
     def validate_update(self, task_id: str, user_id: str, payload: TaskUpdate) -> None:
         task = self._owned(task_id, user_id)
-        if task.task_mode == "fixed" and payload.words_per_group is not None:
+        if (
+            task.task_mode == "fixed"
+            and payload.mode in {None, "fixed"}
+            and payload.words_per_group is not None
+        ):
             raise AppError("fixed_task_group_locked", "固定任务不支持修改每组数量", status_code=409)
 
     def update(self, task_id: str, user_id: str, payload: TaskUpdate) -> TaskOut:
         task = self._owned(task_id, user_id)
-        if task.task_mode == "fixed" and payload.words_per_group is not None:
+        if (
+            task.task_mode == "fixed"
+            and payload.mode in {None, "fixed"}
+            and payload.words_per_group is not None
+        ):
             raise AppError("fixed_task_group_locked", "固定任务不支持修改每组数量", status_code=409)
         task.name = payload.name.strip()
         config = dict(task.config_json)
-        if payload.words_per_group is not None:
-            config["words_per_group"] = min(payload.words_per_group, task.target_count)
+        next_mode = payload.mode or task.task_mode
+        if next_mode == "fixed":
+            config["words_per_group"] = task.target_count
+            config["total_groups"] = 1
+        elif payload.words_per_group is not None or payload.mode == "long_term":
+            requested_group = payload.words_per_group or config["words_per_group"]
+            config["words_per_group"] = min(max(1, requested_group), task.target_count)
             config["total_groups"] = (task.target_count + config["words_per_group"] - 1) // config[
                 "words_per_group"
             ]
+        task.task_mode = next_mode
         if payload.repeat_until_correct is not None:
             config["repeat_until_correct"] = payload.repeat_until_correct
         if payload.dictation is not None:

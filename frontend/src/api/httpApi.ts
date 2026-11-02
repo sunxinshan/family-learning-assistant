@@ -262,7 +262,8 @@ export const httpApi = {
         method: 'PATCH',
         body: JSON.stringify({
           name: changes.name ?? task.name,
-          wordsPerGroup: task.mode === 'fixed' ? null : config.wordsPerGroup,
+          mode: changes.mode ?? task.mode,
+          wordsPerGroup: (changes.mode ?? task.mode) === 'fixed' ? null : config.wordsPerGroup,
           repeatUntilCorrect: config.repeatUntilCorrect,
           dictation: config.dictation,
         }),
