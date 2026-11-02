@@ -1,4 +1,5 @@
 from io import BytesIO
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
@@ -31,37 +32,59 @@ def get_content_service(
 
 
 @router.get("/vocabularies/import-template")
-def download_template(_: RuntimeContext = Depends(get_runtime_context)) -> StreamingResponse:
+def download_template(
+    subject: Literal["english", "chinese"] = "english",
+    _: RuntimeContext = Depends(get_runtime_context),
+) -> StreamingResponse:
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "词库导入"
-    sheet.append(["单词", "音标", "词性", "词义", "例句", "例句翻译"])
-    sheet.append(
-        [
-            "serendipity",
-            "/ˌserənˈdɪpəti/",
-            "n.",
-            "机缘巧合；意外发现美好事物的能力",
-            "Finding this café was pure serendipity.",
-            "发现这家咖啡馆纯属机缘巧合。",
-        ]
-    )
-    sheet.append(
-        [
-            "resilient",
-            "/rɪˈzɪliənt/",
-            "adj.",
-            "有韧性的；能迅速恢复的",
-            "Children are often remarkably resilient.",
-            "孩子往往有惊人的恢复力。",
-        ]
-    )
+    if subject == "english":
+        sheet.title = "英语词库导入"
+        sheet.append(["单词", "音标", "词性", "词义", "例句", "例句翻译"])
+        sheet.append(
+            [
+                "serendipity",
+                "/ˌserənˈdɪpəti/",
+                "n.",
+                "机缘巧合；意外发现美好事物的能力",
+                "Finding this café was pure serendipity.",
+                "发现这家咖啡馆纯属机缘巧合。",
+            ]
+        )
+        sheet.append(
+            [
+                "resilient",
+                "/rɪˈzɪliənt/",
+                "adj.",
+                "有韧性的；能迅速恢复的",
+                "Children are often remarkably resilient.",
+                "孩子往往有惊人的恢复力。",
+            ]
+        )
+    else:
+        sheet.title = "语文词库导入"
+        sheet.append(["词语", "拼音", "词性", "释义", "例句", "例句翻译"])
+        sheet.append(
+            [
+                "锲而不舍",
+                "qiè ér bù shě",
+                "成语",
+                "不断地雕刻，比喻有恒心",
+                "学习需要锲而不舍。",
+                "",
+            ]
+        )
+        sheet.append(
+            ["翩翩起舞", "piān piān qǐ wǔ", "成语", "轻快地跳舞", "蝴蝶在花丛中翩翩起舞。", ""]
+        )
     stream = BytesIO()
     workbook.save(stream)
     return StreamingResponse(
         BytesIO(stream.getvalue()),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="vocabulary-template.xlsx"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{subject}-vocabulary-template.xlsx"'
+        },
     )
 
 

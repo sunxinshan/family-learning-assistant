@@ -16,7 +16,7 @@ import { api } from '../api'
 import { PracticeLayout } from '../features/practice/PracticeLayout'
 import { Badge, Button, EmptyState } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
-import type { DictationConfig, PracticeAttempt } from '../types/domain'
+import type { DictationConfig, PracticeAttempt, WordEntry } from '../types/domain'
 import { formatDuration } from '../utils/format'
 
 interface Feedback {
@@ -84,17 +84,23 @@ export const DictationPracticePage = () => {
     }
   }, [taskId, currentUser, taskExists, showToast])
 
-  const speakWord = useCallback(
-    (word: string) => {
+  const speakEntry = useCallback(
+    (target: WordEntry | undefined) => {
+      if (!target) return
       if (!('speechSynthesis' in window)) {
         showToast('当前浏览器不支持语音合成，请使用支持 Web Speech 的浏览器', 'danger')
         return
       }
+      const readingText =
+        config.hint === 'phonetic'
+          ? target.phonetic || target.word
+          : target.meanings.join('；') || target.word
       window.speechSynthesis.cancel()
       const repeatCount = Math.max(1, config.repeatCount)
       for (let index = 0; index < repeatCount; index += 1) {
-        const utterance = new SpeechSynthesisUtterance(word)
-        utterance.lang = task?.subject === 'chinese' ? 'zh-CN' : 'en-US'
+        const utterance = new SpeechSynthesisUtterance(readingText)
+        utterance.lang =
+          config.hint === 'meaning' || task?.subject === 'chinese' ? 'zh-CN' : 'en-US'
         utterance.rate = task?.subject === 'chinese' ? 0.86 : 0.82
         utterance.pitch = 1
         utterance.onstart = () => setPlaying(true)
@@ -105,7 +111,7 @@ export const DictationPracticePage = () => {
         window.speechSynthesis.speak(utterance)
       }
     },
-    [config.repeatCount, showToast, task?.subject],
+    [config.hint, config.repeatCount, showToast, task?.subject],
   )
 
   useEffect(() => {
@@ -121,13 +127,13 @@ export const DictationPracticePage = () => {
       setCountdown(null)
       return
     }
-    speakWord(entry.word)
+    speakEntry(entry)
     let remaining = Math.max(2, config.intervalSeconds)
     setCountdown(remaining)
     const timer = window.setInterval(() => {
       remaining -= 1
       if (remaining <= 0) {
-        speakWord(entry.word)
+        speakEntry(entry)
         remaining = Math.max(2, config.intervalSeconds)
       }
       setCountdown(remaining)
@@ -142,7 +148,7 @@ export const DictationPracticePage = () => {
     feedback,
     isOffline,
     showResults,
-    speakWord,
+    speakEntry,
     task?.id,
   ])
 
@@ -159,7 +165,7 @@ export const DictationPracticePage = () => {
       setCountdown(null)
       return
     }
-    speakWord(offlineEntry.word)
+    speakEntry(offlineEntry)
     let remaining = Math.max(2, config.intervalSeconds)
     setCountdown(remaining)
     const timer = window.setInterval(() => {
@@ -184,7 +190,7 @@ export const DictationPracticePage = () => {
     offlineIndex,
     offlineReview,
     showResults,
-    speakWord,
+    speakEntry,
     task?.id,
   ])
 
@@ -210,10 +216,7 @@ export const DictationPracticePage = () => {
     )
   }
 
-  const hintFor = (word: (typeof task.snapshot)[number] | undefined) => {
-    if (!word) return ''
-    return config.hint === 'phonetic' ? word.phonetic : word.meanings.join('；')
-  }
+
 
   if (showResults) {
     const accuracy = attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0
@@ -390,29 +393,34 @@ export const DictationPracticePage = () => {
             <button
               type="button"
               className={`audio-play-button ${playing ? 'is-playing' : ''}`}
-              onClick={() => offlineEntry && speakWord(offlineEntry.word)}
+              onClick={() => offlineEntry && speakEntry(offlineEntry)}
             >
               {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
             </button>
             <div>
-              <h1>{playing ? '正在播放…' : '点击播放当前词语'}</h1>
+              <h1>{playing ? '正在播放…' : '点击播放当前朗读内容'}</h1>
               <p>播放内容不会在页面直接显示，请根据提示在纸上书写。</p>
             </div>
             <Button
               size="sm"
               icon={RotateCcw}
-              onClick={() => offlineEntry && speakWord(offlineEntry.word)}
+              onClick={() => offlineEntry && speakEntry(offlineEntry)}
             >
               重播
             </Button>
           </div>
           <div className="dictation-hint-card">
-            <span>
-              {config.hint === 'phonetic'
-                ? task.subject === 'english' ? '英语音标提示' : '语文拼音提示'
-                : '中文释义提示'}
-            </span>
-            <strong>{hintFor(offlineEntry) || '暂无提示内容'}</strong>
+            <span>朗读内容：{config.hint === 'phonetic' ? '音标/拼音' : '中文含义'}</span>
+            <div className="dictation-hint-values">
+              <div>
+                <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
+                <strong>{offlineEntry?.phonetic || '暂无'}</strong>
+              </div>
+              <div>
+                <small>中文含义</small>
+                <strong>{offlineEntry?.meanings.join('；') || '暂无'}</strong>
+              </div>
+            </div>
           </div>
           {countdown !== null ? (
             <div className="auto-play-countdown">
@@ -511,23 +519,28 @@ export const DictationPracticePage = () => {
         </div>
 
         <div className="dictation-audio-area">
-          <button type="button" className={`audio-play-button ${playing ? 'is-playing' : ''}`} onClick={() => speakWord(entry.word)}>
+          <button type="button" className={`audio-play-button ${playing ? 'is-playing' : ''}`} onClick={() => speakEntry(entry)}>
             {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
           </button>
           <div>
-            <h1>{playing ? '正在播放…' : '点击播放当前词语'}</h1>
-            <p>可以重复播放，不会影响答题记录</p>
+            <h1>{playing ? '正在播放…' : '点击播放当前朗读内容'}</h1>
+            <p>按任务设置朗读音标/拼音或中文含义，页面同时显示两部分</p>
           </div>
-          <Button size="sm" icon={RotateCcw} onClick={() => speakWord(entry.word)}>重播</Button>
+          <Button size="sm" icon={RotateCcw} onClick={() => speakEntry(entry)}>重播</Button>
         </div>
 
         <div className="dictation-hint-card">
-          <span>
-            {config.hint === 'phonetic'
-              ? task.subject === 'english' ? '英语音标提示' : '语文拼音提示'
-              : '中文释义提示'}
-          </span>
-          <strong>{hintFor(entry) || '暂无提示内容'}</strong>
+          <span>朗读内容：{config.hint === 'phonetic' ? '音标/拼音' : '中文含义'}</span>
+          <div className="dictation-hint-values">
+            <div>
+              <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
+              <strong>{entry.phonetic || '暂无'}</strong>
+            </div>
+            <div>
+              <small>中文含义</small>
+              <strong>{entry.meanings.join('；') || '暂无'}</strong>
+            </div>
+          </div>
         </div>
 
         {countdown !== null ? (

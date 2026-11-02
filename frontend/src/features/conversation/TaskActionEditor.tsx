@@ -31,8 +31,9 @@ export const TaskActionEditor = ({
   onValidityChange: (valid: boolean) => void
 }) => {
   const draft = action.payload.taskDraft
-  const [subjectFilter, setSubjectFilter] = useState<'all' | Subject>('all')
-  const [selectionText, setSelectionText] = useState('all')
+  const initialSubject = libraries.find((library) => library.id === draft?.libraryId)?.subject ?? 'all'
+  const [subjectFilter, setSubjectFilter] = useState<'all' | Subject>(initialSubject)
+  const [selectionText, setSelectionText] = useState('')
 
   const filteredLibraries = useMemo(
     () => libraries.filter((library) => subjectFilter === 'all' || library.subject === subjectFilter),
@@ -43,6 +44,7 @@ export const TaskActionEditor = ({
 
   useEffect(() => {
     if (!selectedLibrary || !draft) return
+    setSubjectFilter(selectedLibrary.subject)
     setSelectionText(formatEntrySelection(draft.selectedEntryIds, selectedLibrary.entries))
   }, [selectedLibrary?.id])
 
@@ -90,7 +92,10 @@ export const TaskActionEditor = ({
     const library = libraries.find((item) => item.id === libraryId)
     if (!library) return
     const count = library.entries.length
-    setSelectionText('all')
+    setSelectionText(
+      library.entries.length <= 1 ? (library.entries.length ? '1' : '') : `1-${library.entries.length}`,
+    )
+    setSubjectFilter(library.subject)
     onChange({
       ...draft,
       libraryId,
@@ -128,7 +133,9 @@ export const TaskActionEditor = ({
     if (allSelected) {
       updateSelection('')
     } else {
-      updateSelection('all')
+      updateSelection(
+        selectedLibrary.entries.length <= 1 ? '1' : `1-${selectedLibrary.entries.length}`,
+      )
     }
   }
 
@@ -144,10 +151,7 @@ export const TaskActionEditor = ({
 
         <div className="form-grid-two">
           <Field label="学习类型">
-            <SelectInput
-              value={draft.type}
-              onChange={() => undefined}
-            >
+            <SelectInput value={draft.type} disabled aria-readonly="true">
               <option value="dictation">听写练习（V1 唯一正式类型）</option>
             </SelectInput>
           </Field>
@@ -332,7 +336,7 @@ export const TaskActionEditor = ({
                   }
                 />
               </Field>
-              <Field label="朗读时显示">
+              <Field label="朗读内容">
                 <SelectInput
                   value={draft.dictation.hint}
                   onChange={(event) =>

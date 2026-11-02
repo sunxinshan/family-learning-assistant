@@ -211,3 +211,64 @@ def test_admin_can_read_user_learning_stats_but_not_user_tasks(client: TestClien
     stats = client.get(f"/api/v1/admin/users/{bob['id']}/learning-stats", headers=auth(admin))
     assert stats.status_code == 200, stats.text
     assert stats.json()["practiceCount"] == 0
+
+
+def test_english_and_chinese_templates_have_different_headers(client: TestClient) -> None:
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    token = login(client, "Alice", "demo123")
+    english = client.get(
+        "/api/v1/vocabularies/import-template?subject=english", headers=auth(token)
+    )
+    chinese = client.get(
+        "/api/v1/vocabularies/import-template?subject=chinese", headers=auth(token)
+    )
+    assert english.status_code == 200
+    assert chinese.status_code == 200
+    english_headers = [cell.value for cell in load_workbook(BytesIO(english.content)).active[1]]
+    chinese_headers = [cell.value for cell in load_workbook(BytesIO(chinese.content)).active[1]]
+    assert english_headers[:2] == ["单词", "音标"]
+    assert chinese_headers[:2] == ["词语", "拼音"]
+    assert "english-vocabulary-template" in english.headers["content-disposition"]
+    assert "chinese-vocabulary-template" in chinese.headers["content-disposition"]
+
+
+def test_admin_can_publish_own_private_vocabulary(client: TestClient) -> None:
+    admin = login(client, "Admin", "admin123")
+    created = client.post(
+        "/api/v1/vocabularies",
+        headers=auth(admin),
+        json={
+            "subject": "english",
+            "name": "Admin Private",
+            "description": "",
+            "tags": ["admin"],
+            "entries": [
+                {
+                    "word": "publish",
+                    "phonetic": "/ˈpʌblɪʃ/",
+                    "partOfSpeech": "v.",
+                    "meanings": ["发布"],
+                    "example": "",
+                    "exampleTranslation": "",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["visibility"] == "personal"
+    visibility = client.patch(
+        f"/api/v1/vocabularies/{created.json()['id']}/visibility",
+        headers=auth(admin),
+        json={"visibility": "public"},
+    )
+    assert visibility.status_code == 200, visibility.text
+    assert visibility.json()["visibility"] == "public"
+    assert visibility.json()["published"] is True
+    assert visibility.json()["ownerId"] is None
+    public = client.get(
+        "/api/v1/vocabularies?scope=public&subject=english", headers=auth(admin)
+    ).json()
+    assert any(item["id"] == created.json()["id"] for item in public)

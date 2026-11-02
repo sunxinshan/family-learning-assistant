@@ -68,7 +68,7 @@ export const VocabularyCreatePage = () => {
   const handleTemplate = async () => {
     setDownloading(true)
     try {
-      const blob = await api.materials.downloadTemplate()
+      const blob = await api.materials.downloadTemplate(form.subject)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url

@@ -59,7 +59,11 @@ export const TaskCreatePage = () => {
     type: 'dictation' as TaskType,
     mode: 'long_term' as 'fixed' | 'long_term',
     libraryId: availableLibraries[0]?.id ?? '',
-    wordSelection: 'all',
+    wordSelection: availableLibraries[0]?.entries.length
+      ? availableLibraries[0].entries.length === 1
+        ? '1'
+        : `1-${availableLibraries[0].entries.length}`
+      : '',
     wordsPerGroup: Math.min(5, availableLibraries[0]?.entries.length ?? 0),
     repeatUntilCorrect: false,
     dictationMode: 'online' as DictationMode,
@@ -74,10 +78,15 @@ export const TaskCreatePage = () => {
   const applyLibrary = (libraryId: string) => {
     const library = availableLibraries.find((item) => item.id === libraryId)
     if (!library) return
+    setSubjectFilter(library.subject)
     setForm((current) => ({
       ...current,
       libraryId,
-      wordSelection: 'all',
+      wordSelection: library.entries.length
+        ? library.entries.length === 1
+          ? '1'
+          : `1-${library.entries.length}`
+        : '',
       wordsPerGroup: Math.min(5, library.entries.length),
       name:
         current.name ||
@@ -279,17 +288,7 @@ export const TaskCreatePage = () => {
 
               <div className="form-grid-two">
                 <Field label="学习类型">
-                  <SelectInput
-                    value={form.type}
-                    onChange={(event) => {
-                      const type = event.target.value as TaskType
-                      setForm({
-                        ...form,
-                        type,
-                        name: form.name || `${type === 'dictation' ? '听写练习' : '词汇学习'} · ${selectedLibrary.name}`,
-                      })
-                    }}
-                  >
+                  <SelectInput value={form.type} disabled aria-readonly="true">
                     <option value="dictation">听写练习（V1 唯一正式类型）</option>
                   </SelectInput>
                 </Field>
@@ -349,7 +348,16 @@ export const TaskCreatePage = () => {
                   <Button
                     size="sm"
                     icon={ListChecks}
-                    onClick={() => setForm({ ...form, wordSelection: allSelected ? '' : 'all' })}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        wordSelection: allSelected
+                          ? ''
+                          : selectedLibrary.entries.length <= 1
+                            ? '1'
+                            : `1-${selectedLibrary.entries.length}`,
+                      })
+                    }
                   >
                     {allSelected ? '取消全选' : '全选'}
                   </Button>
@@ -456,7 +464,7 @@ export const TaskCreatePage = () => {
                         }
                       />
                     </Field>
-                    <Field label="朗读时显示">
+                    <Field label="朗读内容">
                       <SelectInput
                         value={form.hint}
                         onChange={(event) =>
@@ -517,7 +525,7 @@ export const TaskCreatePage = () => {
                   <div><dt>听写方式</dt><dd>{form.dictationMode === 'online' ? '线上听写' : '线下听写'}</dd></div>
                   <div><dt>播放方式</dt><dd>{form.playbackMode === 'auto' ? `自动 · ${form.intervalSeconds} 秒` : '手动'}</dd></div>
                   <div><dt>朗读次数</dt><dd>{form.repeatCount} 次</dd></div>
-                  <div><dt>朗读时显示</dt><dd>{form.hint === 'phonetic' ? (selectedLibrary.subject === 'english' ? '英语音标' : '语文拼音') : '中文释义'}</dd></div>
+                  <div><dt>朗读内容</dt><dd>{form.hint === 'phonetic' ? (selectedLibrary.subject === 'english' ? '英语音标' : '语文拼音') : '中文释义'}</dd></div>
                 </>
               ) : null}
               <div><dt>强制重做</dt><dd>{form.repeatUntilCorrect ? '开启' : '关闭'}</dd></div>

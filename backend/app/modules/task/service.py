@@ -205,21 +205,13 @@ class TaskService:
 
     def validate_update(self, task_id: str, user_id: str, payload: TaskUpdate) -> None:
         task = self._owned(task_id, user_id)
-        if task.task_mode == "fixed" and (
-            payload.words_per_group is not None
-            or payload.repeat_until_correct is not None
-            or payload.dictation is not None
-        ):
-            raise AppError("fixed_task_locked", "固定任务只能修改名称", status_code=409)
+        if task.task_mode == "fixed" and payload.words_per_group is not None:
+            raise AppError("fixed_task_group_locked", "固定任务不支持修改每组数量", status_code=409)
 
     def update(self, task_id: str, user_id: str, payload: TaskUpdate) -> TaskOut:
         task = self._owned(task_id, user_id)
-        if task.task_mode == "fixed" and (
-            payload.words_per_group is not None
-            or payload.repeat_until_correct is not None
-            or payload.dictation is not None
-        ):
-            raise AppError("fixed_task_locked", "固定任务只能修改名称", status_code=409)
+        if task.task_mode == "fixed" and payload.words_per_group is not None:
+            raise AppError("fixed_task_group_locked", "固定任务不支持修改每组数量", status_code=409)
         task.name = payload.name.strip()
         config = dict(task.config_json)
         if payload.words_per_group is not None:

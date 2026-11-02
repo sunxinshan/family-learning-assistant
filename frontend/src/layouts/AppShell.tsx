@@ -18,8 +18,8 @@ import { IconButton } from '../components/ui'
 
 const baseNav = [
   { to: '/', label: '学习助手', icon: MessageSquare, end: true },
-  { to: '/tasks', label: '学习任务', icon: ListChecks },
   { to: '/vocabulary', label: '词库', icon: LibraryBig },
+  { to: '/tasks', label: '学习任务', icon: ListChecks },
   { to: '/learning', label: '学习记录', icon: ChartNoAxesCombined },
 ]
 

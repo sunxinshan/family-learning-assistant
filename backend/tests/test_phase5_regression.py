@@ -109,15 +109,27 @@ def test_task_snapshot_is_immutable_and_fixed_config_locked(client: TestClient) 
         json={"name": "Renamed", "wordsPerGroup": 2},
     )
     assert locked.status_code == 409
-    assert locked.json()["error"]["code"] == "fixed_task_locked"
+    assert locked.json()["error"]["code"] == "fixed_task_group_locked"
 
     renamed = client.patch(
         f"/api/v1/tasks/{task['id']}",
         headers=auth(token),
-        json={"name": "Renamed"},
+        json={
+            "name": "Renamed",
+            "repeatUntilCorrect": True,
+            "dictation": {
+                "mode": "online",
+                "playbackMode": "auto",
+                "intervalSeconds": 11,
+                "hint": "meaning",
+                "repeatCount": 4,
+            },
+        },
     )
     assert renamed.status_code == 200
     assert renamed.json()["name"] == "Renamed"
+    assert renamed.json()["config"]["repeatUntilCorrect"] is True
+    assert renamed.json()["config"]["dictation"]["intervalSeconds"] == 11
 
 
 def test_long_term_task_update_is_persisted(client: TestClient) -> None:

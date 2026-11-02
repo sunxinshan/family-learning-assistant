@@ -11,7 +11,7 @@ import {
   taskTypeLabel,
 } from '../../utils/format'
 
-export const TaskCard = ({ task }: { task: LearningTask }) => {
+export const TaskCard = ({ task, started }: { task: LearningTask; started: boolean }) => {
   const Icon = task.type === 'vocabulary' ? BookOpenText : Headphones
   return (
     <article className="task-card">
@@ -40,7 +40,7 @@ export const TaskCard = ({ task }: { task: LearningTask }) => {
         {task.status === 'in_progress' ? (
           <Link className="button button-primary button-sm" to={practicePath(task)}>
             <Play size={15} />
-            继续学习
+            {started ? '继续学习' : '开始学习'}
           </Link>
         ) : (
           <Link className="button button-secondary button-sm" to={practicePath(task)}>

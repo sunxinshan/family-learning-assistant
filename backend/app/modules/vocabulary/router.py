@@ -9,6 +9,7 @@ from app.modules.vocabulary.schemas import (
     VocabularyCreate,
     VocabularyOut,
     VocabularyUpdate,
+    VocabularyVisibilityUpdate,
     WordEntryIn,
 )
 from app.modules.vocabulary.service import SUBJECTS, VocabularyService, vocabulary_to_out
@@ -76,6 +77,18 @@ def copy_vocabulary(
     service: VocabularyService = Depends(get_vocabulary_service),
 ) -> VocabularyOut:
     return vocabulary_to_out(service.copy(library_id, context.user_id, context.role))
+
+
+@router.patch("/vocabularies/{library_id}/visibility", response_model=VocabularyOut)
+def set_vocabulary_visibility(
+    library_id: str,
+    payload: VocabularyVisibilityUpdate,
+    context: RuntimeContext = Depends(require_admin),
+    service: VocabularyService = Depends(get_vocabulary_service),
+) -> VocabularyOut:
+    return vocabulary_to_out(
+        service.set_visibility(library_id, context.user_id, context.role, payload.visibility)
+    )
 
 
 @router.delete("/vocabularies/{library_id}", status_code=204)

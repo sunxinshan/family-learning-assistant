@@ -371,7 +371,7 @@ export const ChatMessageItem = ({
         </span>
         <div className="chat-agent-content">
           <div className="chat-error-card">
-            <strong>执行未完成</strong>
+            <strong>操作提示</strong>
             <p>{message.content}</p>
           </div>
           <span className="message-time">{time}</span>

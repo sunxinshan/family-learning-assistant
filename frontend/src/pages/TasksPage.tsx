@@ -10,7 +10,7 @@ type StatusFilter = 'all' | TaskStatus
 type TypeFilter = 'all' | TaskType
 
 export const TasksPage = () => {
-  const { tasks } = useAppStore()
+  const { tasks, practices } = useAppStore()
   const [status, setStatus] = useState<StatusFilter>('all')
   const [type, setType] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
@@ -30,6 +30,7 @@ export const TasksPage = () => {
 
   const inProgress = tasks.filter((task) => task.status === 'in_progress').length
   const completed = tasks.filter((task) => task.status === 'completed').length
+  const startedTaskIds = new Set(practices.map((attempt) => attempt.taskId))
 
   return (
     <main className="page-container tasks-page">
@@ -109,7 +110,9 @@ export const TasksPage = () => {
 
       <section className="task-list">
         {filtered.length ? (
-          filtered.map((task) => <TaskCard key={task.id} task={task} />)
+          filtered.map((task) => (
+            <TaskCard key={task.id} task={task} started={startedTaskIds.has(task.id)} />
+          ))
         ) : (
           <EmptyState
             icon={MessageSquarePlus}

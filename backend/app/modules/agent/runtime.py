@@ -113,7 +113,12 @@ def build_agent_graph(
                 "response": "第一次确认已记录，请再次确认永久删除。",
             }
         result = business.execute(action, state["user_id"], role=state.get("role", "user"))
-        return {**state, "pending_action": None, "response": result}
+        return {
+            **state,
+            "pending_action": None,
+            "response": result.message,
+            "links": result.links,
+        }
 
     def route_after_classify(state: AgentState) -> str:
         if state.get("route") in {
@@ -290,11 +295,17 @@ class AgentRuntime:
                             "role": "assistant",
                             "kind": "text",
                             "content": response,
+                            "links": values.get("links"),
                             "createdAt": _now().isoformat(),
                         },
                         run.id,
                     )
-                    self._append_event(repository, run, "message", {"content": response})
+                    self._append_event(
+                        repository,
+                        run,
+                        "message",
+                        {"content": response, "links": values.get("links")},
+                    )
                     if pending_action:
                         draft_version = int(values.get("draft_version", 1))
                         config_hash = values.get("config_hash")
@@ -480,11 +491,17 @@ class AgentRuntime:
                             "role": "assistant",
                             "kind": "text",
                             "content": response,
+                            "links": values.get("links"),
                             "createdAt": _now().isoformat(),
                         },
                         run.id,
                     )
-                    self._append_event(repository, run, "message", {"content": response})
+                    self._append_event(
+                        repository,
+                        run,
+                        "message",
+                        {"content": response, "links": values.get("links")},
+                    )
                     if pending_action:
                         next_version = int(values.get("draft_version", run.draft_version))
                         next_hash = values.get("config_hash")

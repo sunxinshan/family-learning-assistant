@@ -277,6 +277,24 @@ class VocabularyService:
             raise AppError("forbidden", "你无权删除该词库", status_code=403)
         self.repository.delete(library)
 
+    def set_visibility(
+        self, library_id: str, admin_id: str, role: str, visibility: str
+    ) -> Vocabulary:
+        if role != "admin":
+            raise AppError("forbidden", "仅管理员可以设置公共词库", status_code=403)
+        if visibility not in {"personal", "public"}:
+            raise AppError("invalid_visibility", "词库可见性无效")
+        library = self.repository.get(library_id)
+        if not library:
+            raise AppError("library_not_found", "词库不存在", status_code=404)
+        if library.visibility == "personal" and library.owner_user_id != admin_id:
+            raise AppError("forbidden", "只能公开管理员自己创建的词库", status_code=403)
+        library.visibility = visibility
+        library.owner_user_id = None if visibility == "public" else admin_id
+        library.published = visibility == "public"
+        library.updated_at = datetime.now(UTC)
+        return library
+
     def publish(self, library_id: str, admin_id: str, role: str, published: bool) -> Vocabulary:
         if role != "admin":
             raise AppError("forbidden", "仅管理员可以发布公共词库", status_code=403)

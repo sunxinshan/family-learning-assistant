@@ -10,7 +10,7 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import {
@@ -64,6 +64,10 @@ export const VocabularyDetailPage = () => {
   const [metadataOpen, setMetadataOpen] = useState(false)
   const [metadataDraft, setMetadataDraft] = useState({ subject: 'english' as Subject, name: '', description: '', tags: [] as string[] })
   const [metadataError, setMetadataError] = useState('')
+
+  useEffect(() => {
+    setSelected([])
+  }, [query, libraryId])
 
   const editable = Boolean(
     library &&
@@ -177,13 +181,15 @@ export const VocabularyDetailPage = () => {
   }
 
   const removeSelected = async () => {
+    const idsToDelete = [...selected]
+    if (!idsToDelete.length) return
     setBusy(true)
     try {
-      await api.vocabulary.removeEntries(currentUser.id, library.id, selected)
+      await api.vocabulary.removeEntries(currentUser.id, library.id, idsToDelete)
       refresh()
       setSelected([])
       setDeleteOpen(false)
-      showToast(`已删除 ${selected.length} 个词条`, 'success')
+      showToast(`已删除 ${idsToDelete.length} 个词条`, 'success')
     } catch (cause) {
       showToast(cause instanceof Error ? cause.message : '删除失败', 'danger')
     } finally {
@@ -207,6 +213,23 @@ export const VocabularyDetailPage = () => {
       showToast(`已批量更新 ${selectedEntries.length} 个词条`, 'success')
     } catch (cause) {
       showToast(cause instanceof Error ? cause.message : '批量编辑失败', 'danger')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const togglePublicVisibility = async () => {
+    setBusy(true)
+    try {
+      const visibility = library.visibility === 'public' ? 'personal' : 'public'
+      const updated = await api.vocabulary.setVisibility(currentUser.id, library.id, visibility)
+      await refresh()
+      showToast(
+        updated.visibility === 'public' ? '词库已设为公共词库' : '词库已转为管理员个人词库',
+        'success',
+      )
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : '设置失败', 'danger')
     } finally {
       setBusy(false)
     }
@@ -249,6 +272,12 @@ export const VocabularyDetailPage = () => {
             <>
               <Button icon={Pencil} onClick={openMetadata}>编辑词库信息</Button>
               <Button variant="primary" icon={Plus} onClick={openNew}>添加词条</Button>
+              {currentUser.role === 'admin' &&
+              (library.visibility === 'public' || library.ownerId === currentUser.id) ? (
+                <Button loading={busy} onClick={() => void togglePublicVisibility()}>
+                  {library.visibility === 'public' ? '转为个人词库' : '设为公共词库'}
+                </Button>
+              ) : null}
             </>
           ) : (
             <Button variant="primary" icon={Download} loading={busy} onClick={() => void copyLibrary()}>

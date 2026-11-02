@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { api } from '../api'
-import { ApiError } from '../api/httpClient'
+import { ApiError, subscribeUnauthorized } from '../api/httpClient'
 import type {
   LearningTask,
   PracticeAttempt,
@@ -59,6 +59,19 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(
+    () =>
+      subscribeUnauthorized(() => {
+        setCurrentUser(null)
+        setToast({
+          id: Date.now(),
+          message: '登录状态已失效，请重新登录',
+          tone: 'danger',
+        })
+      }),
+    [],
+  )
 
   useEffect(() => {
     const handleChange = () => void refresh()

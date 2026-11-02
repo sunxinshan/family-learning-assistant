@@ -5967,3 +5967,33 @@ ol {
     border-top: 0;
   }
 }
+
+.dictation-hint-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  flex: 1;
+}
+
+.dictation-hint-values > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dictation-hint-values small {
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+}
+
+.dictation-hint-values strong {
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .dictation-hint-values {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}

@@ -54,6 +54,9 @@ test('real HTTP flow: server import, agent confirmation, active restore, offline
     page.getByText('已整理任务配置，请检查后确认。确认前不会写入任何任务数据。'),
   ).toBeVisible()
   await expect(page.getByText('已选 2 / 2')).toBeVisible()
+  await expect(page.getByLabel('确认面板选择词条序号')).toHaveValue('1-2')
+  await expect(page.getByLabel('学科筛选')).toHaveValue('english')
+  await expect(page.getByLabel('学习类型')).toBeDisabled()
   await page.getByRole('button', { name: '取消全选' }).click()
   await expect(page.getByText('已选 0 / 2')).toBeVisible()
 
@@ -62,11 +65,20 @@ test('real HTTP flow: server import, agent confirmation, active restore, offline
   await expect(page.getByRole('button', { name: '确认创建' })).toBeVisible()
   await page.getByRole('button', { name: '确认创建' }).click()
   await expect(page.getByText(/任务「.*」已创建。/)).toBeVisible()
+  await page.getByRole('link', { name: '打开任务' }).click()
+  await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('link', { name: '开始学习' })).toBeVisible()
+
+  await page.getByRole('button', { name: '编辑' }).click()
+  await page.getByLabel('任务名称').fill(`${libraryName} Edited`)
+  await page.getByLabel('朗读内容').selectOption('meaning')
+  await page.getByRole('button', { name: '保存修改' }).click()
+  await expect(page.getByRole('heading', { name: `${libraryName} Edited` })).toBeVisible()
 
   await page.goto('/tasks')
-  const taskCard = page.locator('.task-card').filter({ hasText: libraryName }).first()
+  const taskCard = page.locator('.task-card').filter({ hasText: `${libraryName} Edited` }).first()
   await expect(taskCard).toBeVisible()
-  await taskCard.getByRole('link', { name: /继续学习/ }).click()
+  await taskCard.getByRole('link', { name: '开始学习' }).click()
   await expect(page.getByText('线下听写', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '下一个词' }).click()
   await page.getByRole('button', { name: '进入核对' }).click()
@@ -122,10 +134,12 @@ test('online dictation submits answers through the real practice API', async ({ 
   await page.getByLabel('任务模式').selectOption('fixed')
   await page.getByRole('button', { name: '创建并保存快照' }).click()
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
-  await page.getByRole('link', { name: /继续学习/ }).click()
+  await page.getByRole('link', { name: '开始学习' }).click()
   await page.getByRole('button', { name: '提交拼写' }).waitFor({ state: 'detached' }).catch(() => undefined)
   const answer = page.getByLabel('输入你听到的词语')
   await expect(answer).toBeVisible()
+  await expect(page.getByText('英语音标', { exact: true })).toBeVisible()
+  await expect(page.getByText('中文含义', { exact: true })).toBeVisible()
   await answer.fill('apple')
   await answer.press('Enter')
   await expect(page.getByText('拼写正确')).toBeVisible()
@@ -135,4 +149,66 @@ test('online dictation submits answers through the real practice API', async ({ 
   await expect(page.getByText('拼写正确')).toBeVisible()
   await page.getByRole('button', { name: '查看听写结果' }).click()
   await expect(page.getByText('100%正确率')).toBeVisible()
+})
+
+test('deleting one entry only removes that entry and cancelling import is clean', async ({
+  page,
+}) => {
+  const suffix = uid()
+  const nickname = `Safety${suffix}`
+  const libraryName = `Safety Library ${suffix}`
+  await register(page, nickname)
+
+  await page.goto('/vocabulary/new')
+  await page.locator('input[type=file]').setInputFiles({
+    name: `${libraryName}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      '单词,音标,词性,词义\napple,/ˈæpl/,n.,苹果\nbook,/bʊk/,n.,书\n',
+    ),
+  })
+  await expect(page.getByText('服务端已解析 2 个词条')).toBeVisible()
+  await page.getByRole('button', { name: '创建词库' }).click()
+  await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
+
+  await page.getByRole('button', { name: '选择词条' }).first().click()
+  await expect(page.getByText('已选 1 项')).toBeVisible()
+  await page.getByRole('button', { name: '批量删除' }).click()
+  await page.getByRole('button', { name: '确认删除 1 项' }).click()
+  await expect(page.locator('.vocabulary-table tbody tr')).toHaveCount(1)
+  await expect(page.getByText('book', { exact: true })).toBeVisible()
+
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles({
+    name: `cancel-${suffix}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from('Word\napple\n'),
+  })
+  await expect(page.getByRole('button', { name: '确认导入' })).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).last().click()
+  await expect(page.getByText('已取消本次操作，没有写入任何业务数据。')).toBeVisible()
+  await expect(page.getByText('操作提示')).toHaveCount(0)
+})
+
+test('admin can publish an admin-created personal vocabulary', async ({ page }) => {
+  const suffix = uid()
+  const libraryName = `Admin Public ${suffix}`
+  await page.goto('/login')
+  await page.getByRole('button', { name: /管理员 · Admin/ }).click()
+  await page.waitForURL('http://127.0.0.1:5173/')
+  await page.goto('/vocabulary/new')
+  await page.locator('input[type=file]').setInputFiles({
+    name: `${libraryName}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from('单词,音标,词性,词义\npublish,/ˈpʌblɪʃ/,v.,发布\n'),
+  })
+  await expect(page.getByText('服务端已解析 1 个词条')).toBeVisible()
+  await page.getByRole('button', { name: '创建词库' }).click()
+  await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
+  await page.getByRole('button', { name: '设为公共词库' }).click()
+  await expect(page.getByText('词库已设为公共词库')).toBeVisible()
+  await expect(page.getByText('公共词库', { exact: true }).first()).toBeVisible()
+  await page.goto('/vocabulary')
+  await page.getByRole('tab', { name: /公共词库/ }).click()
+  await expect(page.getByText(libraryName, { exact: true }).first()).toBeVisible()
 })

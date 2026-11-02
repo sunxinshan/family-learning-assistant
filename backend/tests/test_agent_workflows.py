@@ -423,3 +423,48 @@ def test_sse_disconnect_does_not_cancel_background_run(client: TestClient) -> No
     events = parse_sse(replay.text)
     assert {event["type"] for event in events} >= {"message", "confirmation_required", "done"}
     assert all(event["sequence"] > 1 for event in events)
+
+
+def test_agent_selects_prefix_count_defaults_fixed_and_returns_task_link(
+    client: TestClient,
+) -> None:
+    token = login(client)
+    entries = [
+        {
+            "word": f"word{index}",
+            "phonetic": f"/w{index}/",
+            "partOfSpeech": "n.",
+            "meanings": [f"词{index}"],
+            "example": "",
+            "exampleTranslation": "",
+        }
+        for index in range(1, 13)
+    ]
+    library = client.post(
+        "/api/v1/vocabularies",
+        headers=auth(token),
+        json={
+            "subject": "english",
+            "name": "Prefix Library",
+            "description": "",
+            "tags": [],
+            "entries": entries,
+        },
+    ).json()
+    events = start_run(client, token, "选择词库「Prefix Library」的前10个单词生成学习任务")
+    confirmation = find_event(events, "confirmation_required")
+    draft = confirmation["data"]["payload"]["taskDraft"]
+    assert draft["mode"] == "fixed"
+    assert len(draft["selectedEntryIds"]) == 10
+    assert draft["selectedEntryIds"] == [entry["id"] for entry in library["entries"][:10]]
+
+    confirmed = _confirm(
+        client,
+        token,
+        confirmation["run_id"],
+        confirmation["data"]["draft_version"],
+        _run_hash(client, token, confirmation["run_id"]),
+    )
+    message = find_event(confirmed, "message")
+    assert message["data"]["links"][0]["label"] == "打开任务"
+    assert message["data"]["links"][0]["to"].startswith("/tasks/")

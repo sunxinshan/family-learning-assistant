@@ -262,7 +262,7 @@ export const httpApi = {
         method: 'PATCH',
         body: JSON.stringify({
           name: changes.name ?? task.name,
-          wordsPerGroup: config.wordsPerGroup,
+          wordsPerGroup: task.mode === 'fixed' ? null : config.wordsPerGroup,
           repeatUntilCorrect: config.repeatUntilCorrect,
           dictation: config.dictation,
         }),
@@ -373,6 +373,21 @@ export const httpApi = {
       notifyDataChanged()
       return findLibrary(libraryId)
     },
+    async setVisibility(_userId: string, libraryId: string, visibility: 'personal' | 'public'): Promise<Vocabulary> {
+      const library = await request<Vocabulary>(`/vocabularies/${libraryId}/visibility`, {
+        method: 'PATCH',
+        body: JSON.stringify({ visibility }),
+      })
+      librariesCache = librariesCache.filter((item) => item.id !== libraryId)
+      publicLibrariesCache = publicLibrariesCache.filter((item) => item.id !== libraryId)
+      if (library.visibility === 'public') {
+        publicLibrariesCache = sortUpdated([library, ...publicLibrariesCache])
+      } else {
+        librariesCache = sortUpdated([library, ...librariesCache])
+      }
+      notifyDataChanged()
+      return library
+    },
     async removePublic(_userId: string, libraryId: string): Promise<void> {
       await request<void>(`/vocabularies/${libraryId}`, { method: 'DELETE' })
       publicLibrariesCache = publicLibrariesCache.filter((item) => item.id !== libraryId)
@@ -401,8 +416,8 @@ export const httpApi = {
         body: form,
       })
     },
-    async downloadTemplate(): Promise<Blob> {
-      const response = await requestResponse('/vocabularies/import-template')
+    async downloadTemplate(subject: 'english' | 'chinese' = 'english'): Promise<Blob> {
+      const response = await requestResponse(`/vocabularies/import-template?subject=${subject}`)
       return response.blob()
     },
   },

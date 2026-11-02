@@ -69,7 +69,9 @@ export const formatEntrySelection = (
     .map((entry, index) => (selected.has(entry.id) ? index + 1 : null))
     .filter((index): index is number => index !== null)
   if (!indexes.length) return ''
-  if (indexes.length === entries.length) return 'all'
+  if (indexes.length === entries.length) {
+    return entries.length <= 1 ? entries.map(() => '1').join('') : `1-${entries.length}`
+  }
 
   const parts: string[] = []
   let start = indexes[0]

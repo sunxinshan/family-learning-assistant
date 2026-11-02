@@ -49,6 +49,10 @@ class VocabularyOut(CamelModel):
     updated_at: datetime
 
 
+class VocabularyVisibilityUpdate(CamelModel):
+    visibility: str
+
+
 class SubjectOut(CamelModel):
     code: str
     display_name: str

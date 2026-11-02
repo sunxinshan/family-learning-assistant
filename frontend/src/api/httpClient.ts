@@ -69,6 +69,17 @@ export class ApiError extends Error {
 }
 
 let refreshPromise: Promise<StoredSession | null> | null = null
+const unauthorizedListeners = new Set<() => void>()
+
+const notifyUnauthorized = () => {
+  localStorage.removeItem(SESSION_KEY)
+  for (const listener of unauthorizedListeners) listener()
+}
+
+export const subscribeUnauthorized = (listener: () => void): (() => void) => {
+  unauthorizedListeners.add(listener)
+  return () => unauthorizedListeners.delete(listener)
+}
 
 const refreshSession = async (): Promise<StoredSession | null> => {
   const current = readSession()
@@ -81,7 +92,7 @@ const refreshSession = async (): Promise<StoredSession | null> => {
     })
       .then(async (response) => {
         if (!response.ok) {
-          localStorage.removeItem(SESSION_KEY)
+          notifyUnauthorized()
           return null
         }
         return writeSession((await response.json()) as TokenResponse)
@@ -123,6 +134,9 @@ async function send(path: string, init: RequestInit, allowRefresh: boolean): Pro
   if (response.status === 401 && allowRefresh && session?.refreshToken) {
     const refreshed = await refreshSession()
     if (refreshed) return send(path, init, false)
+    notifyUnauthorized()
+  } else if (response.status === 401) {
+    notifyUnauthorized()
   }
   return response
 }

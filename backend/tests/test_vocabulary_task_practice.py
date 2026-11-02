@@ -169,3 +169,18 @@ def test_offline_self_check_records_source(client: TestClient) -> None:
     assert result.status_code == 200, result.text
     assert result.json()["answers"][0]["evaluationSource"] == "self_report"
     assert result.json()["answers"][0]["correct"] is False
+
+
+def test_batch_delete_only_removes_requested_entries(client: TestClient) -> None:
+    token = login(client, "Alice", "demo123")
+    library = create_library(client, token)
+    first_id = library["entries"][0]["id"]
+    second_id = library["entries"][1]["id"]
+    response = client.post(
+        f"/api/v1/vocabularies/{library['id']}/entries/batch-delete",
+        headers=auth(token),
+        json=[first_id],
+    )
+    assert response.status_code == 204
+    refreshed = client.get(f"/api/v1/vocabularies/{library['id']}", headers=auth(token)).json()
+    assert [entry["id"] for entry in refreshed["entries"]] == [second_id]

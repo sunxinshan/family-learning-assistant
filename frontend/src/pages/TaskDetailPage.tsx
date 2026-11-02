@@ -17,15 +17,18 @@ import { api } from '../api'
 import {
   Badge,
   Button,
+  Checkbox,
   EmptyState,
   Field,
   InlineError,
   Modal,
   PageHeader,
   ProgressBar,
+  SelectInput,
   TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
+import type { DictationHint, DictationMode, PlaybackMode } from '../types/domain'
 import {
   formatDateTime,
   practicePath,
@@ -51,6 +54,20 @@ export const TaskDetailPage = () => {
   const [deleteStage, setDeleteStage] = useState<0 | 1 | 2>(0)
   const [name, setName] = useState(task?.name ?? '')
   const [wordsPerGroup, setWordsPerGroup] = useState(task?.config.wordsPerGroup ?? 0)
+  const [repeatUntilCorrect, setRepeatUntilCorrect] = useState(
+    task?.config.repeatUntilCorrect ?? false,
+  )
+  const [dictationMode, setDictationMode] = useState<DictationMode>(
+    task?.config.dictation?.mode ?? 'online',
+  )
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>(
+    task?.config.dictation?.playbackMode ?? 'manual',
+  )
+  const [intervalSeconds, setIntervalSeconds] = useState(
+    task?.config.dictation?.intervalSeconds ?? 5,
+  )
+  const [repeatCount, setRepeatCount] = useState(task?.config.dictation?.repeatCount ?? 1)
+  const [hint, setHint] = useState<DictationHint>(task?.config.dictation?.hint ?? 'phonetic')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -73,6 +90,12 @@ export const TaskDetailPage = () => {
   const openEditor = () => {
     setName(task.name)
     setWordsPerGroup(task.config.wordsPerGroup)
+    setRepeatUntilCorrect(task.config.repeatUntilCorrect)
+    setDictationMode(task.config.dictation?.mode ?? 'online')
+    setPlaybackMode(task.config.dictation?.playbackMode ?? 'manual')
+    setIntervalSeconds(task.config.dictation?.intervalSeconds ?? 5)
+    setRepeatCount(task.config.dictation?.repeatCount ?? 1)
+    setHint(task.config.dictation?.hint ?? 'phonetic')
     setError('')
     setEditOpen(true)
   }
@@ -91,16 +114,20 @@ export const TaskDetailPage = () => {
     try {
       await api.task.update(currentUser.id, task.id, {
         name: name.trim(),
-        ...(fixed
-          ? {}
-          : {
-              config: {
-                ...task.config,
-                questionCount: task.targetCount,
-                wordsPerGroup,
-                totalGroups: Math.ceil(task.targetCount / wordsPerGroup),
-              },
-            }),
+        config: {
+          ...task.config,
+          questionCount: task.targetCount,
+          wordsPerGroup: fixed ? task.targetCount : wordsPerGroup,
+          totalGroups: fixed ? 1 : Math.ceil(task.targetCount / wordsPerGroup),
+          repeatUntilCorrect,
+          dictation: {
+            mode: dictationMode,
+            playbackMode,
+            intervalSeconds,
+            repeatCount,
+            hint,
+          },
+        },
       })
       refresh()
       setEditOpen(false)
@@ -142,7 +169,11 @@ export const TaskDetailPage = () => {
           <>
             <Link className="button button-primary button-md" to={practicePath(task)}>
               <Play size={16} />
-              {task.status === 'completed' ? '再练一次' : '继续学习'}
+              {task.status === 'completed'
+                ? '再练一次'
+                : attempts.length
+                  ? '继续学习'
+                  : '开始学习'}
             </Link>
             <Button icon={Pencil} onClick={openEditor}>编辑</Button>
             <Button variant="ghost" icon={Trash2} onClick={() => setDeleteStage(1)}>删除</Button>
@@ -326,7 +357,7 @@ export const TaskDetailPage = () => {
       <Modal
         open={editOpen}
         title="编辑学习任务"
-        description={fixed ? '固定任务仅允许修改名称，学习内容保持锁定。' : '修改会通过 Task Service 保存，并记录关键操作日志。'}
+        description="可修改任务名称、重做规则和听写配置；创建时保存的词条快照保持不变。"
         onClose={() => setEditOpen(false)}
         footer={
           <>
@@ -353,11 +384,59 @@ export const TaskDetailPage = () => {
               />
             </Field>
           ) : null}
-          {!fixed ? (
-            <div className="info-note">
-              修改分组规则后，从下一组开始生效；当前组继续使用旧规则。
-            </div>
-          ) : null}
+          <Checkbox
+            checked={repeatUntilCorrect}
+            onChange={setRepeatUntilCorrect}
+            label="答对后才能进入下一组"
+          />
+          <div className="form-grid-two">
+            <Field label="听写方式">
+              <SelectInput
+                value={dictationMode}
+                onChange={(event) => setDictationMode(event.target.value as DictationMode)}
+              >
+                <option value="online">线上听写</option>
+                <option value="offline">线下听写</option>
+              </SelectInput>
+            </Field>
+            <Field label="播放方式">
+              <SelectInput
+                value={playbackMode}
+                onChange={(event) => setPlaybackMode(event.target.value as PlaybackMode)}
+              >
+                <option value="manual">手动播放</option>
+                <option value="auto">自动播放</option>
+              </SelectInput>
+            </Field>
+          </div>
+          <div className="form-grid-two">
+            <Field label="自动播放间隔">
+              <TextInput
+                type="number"
+                min={2}
+                max={60}
+                value={intervalSeconds}
+                disabled={playbackMode !== 'auto'}
+                onChange={(event) => setIntervalSeconds(Number(event.target.value))}
+              />
+            </Field>
+            <Field label="朗读次数">
+              <TextInput
+                type="number"
+                min={1}
+                max={5}
+                value={repeatCount}
+                onChange={(event) => setRepeatCount(Number(event.target.value))}
+              />
+            </Field>
+          </div>
+          <Field label="朗读内容">
+            <SelectInput value={hint} onChange={(event) => setHint(event.target.value as DictationHint)}>
+              <option value="phonetic">{task.subject === 'english' ? '英语音标' : '语文拼音'}</option>
+              <option value="meaning">中文含义</option>
+            </SelectInput>
+          </Field>
+          <div className="info-note">任务词条快照不可替换；其他配置可在后续练习中生效。</div>
         </div>
       </Modal>
 

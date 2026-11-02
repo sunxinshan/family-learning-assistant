@@ -20,6 +20,7 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { ApiError } from '../api/httpClient'
 import { AgentAvatar, ChatMessageItem } from '../features/conversation/MessageComponents'
 import { Badge, Button, IconButton, Modal } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
@@ -191,6 +192,7 @@ export const ChatPage = () => {
         await api.agent.run(payload, currentUser.id, handleEvent)
         await refresh()
       } catch (cause) {
+        if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403)) return
         appendMessage({
           id: messageId(),
           role: 'assistant',
@@ -286,29 +288,38 @@ export const ChatPage = () => {
     }
   }
 
+  const finishCancel = (action: PendingAction) => {
+    const message = messagesRef.current.find(
+      (candidate) => candidate.action?.id === action.id,
+    )
+    if (message) {
+      patchMessage(message.id, (candidate) => ({
+        ...candidate,
+        action: candidate.action
+          ? { ...candidate.action, executed: true }
+          : candidate.action,
+      }))
+    }
+    appendMessage({
+      id: messageId(),
+      role: 'assistant',
+      kind: 'text',
+      content: '已取消本次操作，没有写入任何业务数据。你仍然可以继续调整需求。',
+      createdAt: now(),
+    })
+    showToast('操作已取消', 'default')
+  }
+
   const handleCancel = async (action: PendingAction) => {
     try {
       if (currentUser) await api.agent.cancel(action, currentUser.id)
-      const message = messagesRef.current.find(
-        (candidate) => candidate.action?.id === action.id,
-      )
-      if (message) {
-        patchMessage(message.id, (candidate) => ({
-          ...candidate,
-          action: candidate.action
-            ? { ...candidate.action, executed: true }
-            : candidate.action,
-        }))
-      }
-      appendMessage({
-        id: messageId(),
-        role: 'assistant',
-        kind: 'text',
-        content: '已取消本次操作，没有写入任何业务数据。你仍然可以继续调整需求。',
-        createdAt: now(),
-      })
-      showToast('操作已取消', 'default')
+      finishCancel(action)
     } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'run_not_waiting') {
+        finishCancel(action)
+        return
+      }
+      if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403)) return
       showToast(cause instanceof Error ? cause.message : '取消失败', 'danger')
     }
   }

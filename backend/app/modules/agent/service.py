@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -23,6 +24,12 @@ from app.modules.vocabulary.schemas import VocabularyCreate
 from app.modules.vocabulary.service import VocabularyService
 
 
+@dataclass(frozen=True)
+class AgentActionResult:
+    message: str
+    links: list[dict[str, str]]
+
+
 class AgentState(TypedDict, total=False):
     user_id: str
     role: str
@@ -36,6 +43,7 @@ class AgentState(TypedDict, total=False):
     draft_version: int
     config_hash: str | None
     token_usage: dict[str, int] | None
+    links: list[dict[str, str]] | None
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
@@ -51,6 +59,10 @@ def _quoted(text: str) -> str | None:
 def _parse_selected_ids(text: str, entries: list[Any]) -> list[str]:
     if "所有" in text or "全部" in text:
         return [entry.id for entry in entries]
+    prefix_match = re.search(r"前\s*(\d+)\s*(?:个|项|词|单词)?", text)
+    if prefix_match:
+        count = max(0, min(len(entries), int(prefix_match.group(1))))
+        return [entry.id for entry in entries[:count]]
     tokens = text.replace("，", ",").split()
     indexes: set[int] = set()
     for token in tokens:
@@ -108,7 +120,7 @@ def _prepare_task_action(state: AgentState, service: "AgentBusinessService") -> 
         "hint": "meaning" if any(word in text for word in ("中文", "释义")) else "phonetic",
         "repeatCount": repeat_count,
     }
-    mode = "fixed" if "固定" in text else "long_term"
+    mode = "long_term" if "长期" in text else "fixed"
     draft = {
         "name": (
             quoted
@@ -322,15 +334,6 @@ class AgentBusinessService:
                     "route": "chat",
                     "response": "没有找到可以修改的任务。",
                 }
-            if task.mode == "fixed":
-                return {
-                    **state,
-                    "route": "chat",
-                    "response": (
-                        f"「{task.name}」是固定任务，内容创建后不能修改；"
-                        "如需调整，请删除后重新创建。本次没有写入任何数据。"
-                    ),
-                }
             changes = _update_changes_from_text(
                 state["text"], task, task.config.model_dump(by_alias=True)
             )
@@ -542,7 +545,9 @@ class AgentBusinessService:
                 f"待复习 {stats.review_count} 个。"
             )
 
-    def execute(self, action: dict[str, Any], user_id: str, role: str = "user") -> str:
+    def execute(
+        self, action: dict[str, Any], user_id: str, role: str = "user"
+    ) -> AgentActionResult:
         self.validate_action(action, user_id, role)
         with self.database.session() as session:
             task_service = TaskService(TaskRepository(session), session)
@@ -552,7 +557,10 @@ class AgentBusinessService:
             if operation == "create_task":
                 draft = payload["taskDraft"]
                 created = task_service.create(user_id, role, TaskCreate.model_validate(draft))
-                return f"任务「{created.name}」已创建。"
+                return AgentActionResult(
+                    f"任务「{created.name}」已创建。",
+                    [{"label": "打开任务", "to": f"/tasks/{created.id}"}],
+                )
             if operation == "update_task":
                 changes = payload["changes"]
                 config = changes["config"]
@@ -562,23 +570,33 @@ class AgentBusinessService:
                     TaskUpdate.model_validate(
                         {
                             "name": changes["name"],
-                            "wordsPerGroup": config.get("wordsPerGroup"),
+                            "wordsPerGroup": (
+                                None
+                                if changes.get("mode") == "fixed"
+                                else config.get("wordsPerGroup")
+                            ),
                             "repeatUntilCorrect": config.get("repeatUntilCorrect"),
                             "dictation": config.get("dictation"),
                         }
                     ),
                 )
-                return f"任务「{updated.name}」已更新。"
+                return AgentActionResult(
+                    f"任务「{updated.name}」已更新。",
+                    [{"label": "打开任务", "to": f"/tasks/{updated.id}"}],
+                )
             if operation == "delete_task":
                 task_service.delete(payload["taskId"], user_id)
-                return "任务及其练习记录已删除。"
+                return AgentActionResult("任务及其练习记录已删除。", [])
             if operation == "create_vocabulary":
                 created_library = vocabulary_service.create(
                     user_id,
                     role,
                     VocabularyCreate.model_validate(payload["vocabularyDraft"]),
                 )
-                return f"词库「{created_library.name}」已创建。"
+                return AgentActionResult(
+                    f"词库「{created_library.name}」已创建。",
+                    [{"label": "打开词库", "to": f"/vocabulary/{created_library.id}"}],
+                )
             if operation == "import_vocabulary":
                 draft = VocabularyCreate.model_validate(payload["vocabularyDraft"])
                 extraction_id = payload.get("extractionId")
@@ -602,5 +620,8 @@ class AgentBusinessService:
                     imported = content.confirm(extraction.id, user_id, role, extraction.version)
                 else:
                     imported = vocabulary_service.create(user_id, role, draft)
-                return f"词库「{imported.name}」已导入，共 {len(imported.entries)} 个词条。"
+                return AgentActionResult(
+                    f"词库「{imported.name}」已导入，共 {len(imported.entries)} 个词条。",
+                    [{"label": "打开词库", "to": f"/vocabulary/{imported.id}"}],
+                )
             raise AppError("unsupported_action", "暂不支持该操作")
