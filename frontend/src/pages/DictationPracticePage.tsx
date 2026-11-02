@@ -33,6 +33,9 @@ const defaultDictationConfig: DictationConfig = {
   repeatCount: 1,
 }
 
+/** 线上听写答对后停留多久再自动进入下一题（毫秒） */
+const AUTO_ADVANCE_DELAY_MS = 1000
+
 export const DictationPracticePage = () => {
   const { taskId } = useParams()
   const navigate = useNavigate()
@@ -55,6 +58,8 @@ export const DictationPracticePage = () => {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [showResults, setShowResults] = useState(false)
   const startedAtRef = useRef(performance.now())
+  const autoAdvanceTimer = useRef<number | null>(null)
+  const answerInputRef = useRef<HTMLInputElement>(null)
   const practiceEntries = useMemo(
     () =>
       task
@@ -111,6 +116,13 @@ export const DictationPracticePage = () => {
       cancelled = true
     }
   }, [taskId, currentUser, taskExists, isWrongPractice, showToast])
+
+  const clearAutoAdvance = useCallback(() => {
+    if (autoAdvanceTimer.current !== null) {
+      window.clearTimeout(autoAdvanceTimer.current)
+      autoAdvanceTimer.current = null
+    }
+  }, [])
 
   const speakEntry = useCallback(
     (target: WordEntry | undefined) => {
@@ -222,10 +234,16 @@ export const DictationPracticePage = () => {
 
   useEffect(
     () => () => {
+      clearAutoAdvance()
       cancelSpeech()
     },
-    [],
+    [clearAutoAdvance],
   )
+
+  // 换题或反馈消失后把焦点还给输入框，自动进入下一题时不用再点一下。
+  useEffect(() => {
+    if (!feedback && !showResults && entry) answerInputRef.current?.focus()
+  }, [activeIndex, entry, feedback, showResults])
 
   if (!task || !currentUser || !attempt) {
     return (
@@ -538,6 +556,14 @@ export const DictationPracticePage = () => {
       setAttempt(result.attempt)
       setFeedback({ given: answer.trim(), correct: result.isCorrect })
       refresh()
+      // 线上听写答对即自动继续；答错停在原地看正确答案再手动继续。
+      clearAutoAdvance()
+      if (result.isCorrect) {
+        autoAdvanceTimer.current = window.setTimeout(
+          () => advanceTo(result.attempt),
+          AUTO_ADVANCE_DELAY_MS,
+        )
+      }
     } catch (cause) {
       showToast(cause instanceof Error ? cause.message : '提交失败', 'danger')
     } finally {
@@ -545,16 +571,19 @@ export const DictationPracticePage = () => {
     }
   }
 
-  const advance = () => {
-    if (attempt.status === 'completed') {
+  const advanceTo = (source: PracticeAttempt) => {
+    clearAutoAdvance()
+    if (source.status === 'completed') {
       setShowResults(true)
       return
     }
-    setActiveIndex(attempt.currentIndex)
+    setActiveIndex(source.currentIndex)
     setAnswer('')
     setFeedback(null)
     startedAtRef.current = performance.now()
   }
+
+  const advance = () => advanceTo(attempt)
 
   return (
       <PracticeLayout
@@ -627,6 +656,7 @@ export const DictationPracticePage = () => {
           <label htmlFor="dictation-answer">输入你听到的词语</label>
           <input
             id="dictation-answer"
+            ref={answerInputRef}
             value={answer}
             onChange={(event) => setAnswer(event.target.value)}
             onKeyDown={(event) => {
@@ -662,7 +692,11 @@ export const DictationPracticePage = () => {
 
         <footer className="practice-card-footer">
           <span className="practice-hint">
-            {feedback ? '本题已保存，可继续下一题' : '按 Enter 也可以提交'}
+            {feedback
+              ? feedback.correct
+                ? `答对了，${AUTO_ADVANCE_DELAY_MS / 1000} 秒后自动继续`
+                : '本题已保存，可继续下一题'
+              : '按 Enter 也可以提交'}
           </span>
           {feedback ? (
             <Button variant="primary" icon={ArrowRight} onClick={advance}>

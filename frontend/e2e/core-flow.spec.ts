@@ -156,7 +156,7 @@ test('online dictation submits answers through the real practice API', async ({ 
   await answer.fill('book')
   await answer.press('Enter')
   await expect(page.getByText('拼写正确')).toBeVisible()
-  await page.getByRole('button', { name: '查看听写结果' }).click()
+  // 线上听写答对后自动继续，最后一题自动进入结果页。
   await expect(page.getByText('50%正确率')).toBeVisible()
 
   await page.getByRole('link', { name: '返回任务详情' }).click()
@@ -166,7 +166,6 @@ test('online dictation submits answers through the real practice API', async ({ 
   await answer.fill('apple')
   await answer.press('Enter')
   await expect(page.getByText('拼写正确')).toBeVisible()
-  await page.getByRole('button', { name: '查看听写结果' }).click()
   await expect(page.getByText('本次错题练习结果已保存')).toBeVisible()
   await page.getByRole('link', { name: '返回任务详情' }).click()
   await expect(page.getByText('已连续答对 1 次，再答对 1 次移出')).toBeVisible()
@@ -174,7 +173,7 @@ test('online dictation submits answers through the real practice API', async ({ 
   await page.getByRole('link', { name: /练习错题 1/ }).click()
   await answer.fill('apple')
   await answer.press('Enter')
-  await page.getByRole('button', { name: '查看听写结果' }).click()
+  await expect(page.getByRole('link', { name: '返回任务详情' })).toBeVisible()
   await page.getByRole('link', { name: '返回任务详情' }).click()
   await expect(page.getByText('目前没有待复习的错题。')).toBeVisible()
 })

@@ -67,15 +67,10 @@ const readSpoken = (page: Page) =>
         .__spoken,
   )
 
-test('English dictation reads the word itself, not the IPA string', async ({ page }) => {
-  const suffix = uid()
-  const libraryName = `Audio Library ${suffix}`
-  await stubSpeech(page)
-  await register(page, `Audio${suffix}`)
-
+async function openEnglishDictation(page: Page, suffix: string) {
   await page.goto('/vocabulary/new')
   await page.locator('input[type=file]').setInputFiles({
-    name: `${libraryName}.csv`,
+    name: `Dictation Library ${suffix}.csv`,
     mimeType: 'text/csv',
     buffer: Buffer.from('单词,音标,词性,词义\napple,/ˈæpl/,n.,苹果\nbook,/bʊk/,n.,书\n'),
   })
@@ -84,7 +79,7 @@ test('English dictation reads the word itself, not the IPA string', async ({ pag
   await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
 
   await page.goto('/tasks/new')
-  await page.getByLabel('任务名称').fill(`Audio Task ${suffix}`)
+  await page.getByLabel('任务名称').fill(`Dictation Task ${suffix}`)
   await page.locator('.advanced-settings summary').click()
   await page.getByRole('button', { name: '全选' }).click()
   await expect(page.getByLabel('朗读内容')).toHaveValue('phonetic')
@@ -92,8 +87,15 @@ test('English dictation reads the word itself, not the IPA string', async ({ pag
   await page.getByRole('button', { name: '创建并保存快照' }).click()
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
   await page.getByRole('link', { name: '开始学习' }).click()
-
   await expect(page.getByLabel('输入你听到的词语')).toBeVisible()
+}
+
+test('English dictation reads the word itself, not the IPA string', async ({ page }) => {
+  const suffix = uid()
+  await stubSpeech(page)
+  await register(page, `Audio${suffix}`)
+  await openEnglishDictation(page, suffix)
+
   await page.locator('.audio-play-button').click()
   await page.waitForFunction(
     () =>
@@ -108,4 +110,26 @@ test('English dictation reads the word itself, not the IPA string', async ({ pag
     expect(item.voice).toBe('Samantha')
   }
   expect(spoken.map((item) => item.text)).not.toContain('/ˈæpl/')
+})
+
+test('a correct online answer advances without clicking 下一题', async ({ page }) => {
+  const suffix = uid()
+  await register(page, `Advance${suffix}`)
+  await openEnglishDictation(page, suffix)
+
+  const progress = page.locator('.practice-progress span').first()
+  const answer = page.getByLabel('输入你听到的词语')
+  await expect(progress).toHaveText('1 / 2')
+
+  await answer.fill('apple')
+  await answer.press('Enter')
+  await expect(page.getByText('拼写正确')).toBeVisible()
+  await expect(progress).toHaveText('2 / 2')
+  await expect(answer).toHaveValue('')
+
+  // 自动继续后输入框仍然可用，直接答下一题即可。
+  await answer.fill('book')
+  await answer.press('Enter')
+  await expect(page.getByText('拼写正确')).toBeVisible()
+  await expect(page.getByText('100%正确率')).toBeVisible()
 })
