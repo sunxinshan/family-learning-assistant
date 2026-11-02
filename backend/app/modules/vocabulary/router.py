@@ -10,31 +10,14 @@ from app.modules.vocabulary.schemas import (
     VocabularyOut,
     VocabularyUpdate,
     WordEntryIn,
-    WordEntryOut,
 )
-from app.modules.vocabulary.service import SUBJECTS, VocabularyService
+from app.modules.vocabulary.service import SUBJECTS, VocabularyService, vocabulary_to_out
 
 router = APIRouter(tags=["vocabulary"])
 
 
 def get_vocabulary_service(session: Session = Depends(get_session)) -> VocabularyService:
     return VocabularyService(VocabularyRepository(session))
-
-
-def vocabulary_to_out(library) -> VocabularyOut:
-    return VocabularyOut(
-        id=library.id,
-        owner_id=library.owner_user_id,
-        subject=library.subject,
-        name=library.name,
-        description=library.description,
-        tags=[tag.name for tag in library.tags],
-        visibility=library.visibility,
-        published=library.published,
-        entries=[WordEntryOut.model_validate(entry) for entry in library.entries],
-        created_at=library.created_at,
-        updated_at=library.updated_at,
-    )
 
 
 @router.get("/subjects", response_model=list[SubjectOut])

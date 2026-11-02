@@ -10,7 +10,7 @@ from app.modules.content.schemas import ContentExtractionUpdate
 from app.modules.material.repository import MaterialRepository
 from app.modules.vocabulary.repository import VocabularyRepository
 from app.modules.vocabulary.schemas import VocabularyCreate, VocabularyOut
-from app.modules.vocabulary.service import VocabularyService
+from app.modules.vocabulary.service import VocabularyService, vocabulary_to_out
 
 
 class ContentService:
@@ -87,4 +87,4 @@ class ContentService:
         extraction.status = "confirmed"
         extraction.confirmed_at = datetime.now(UTC)
         extraction.updated_at = extraction.confirmed_at
-        return VocabularyOut.model_validate(library)
+        return vocabulary_to_out(library)

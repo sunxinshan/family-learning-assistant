@@ -10,13 +10,35 @@ from app.modules.vocabulary.models import (
     WordEntry,
 )
 from app.modules.vocabulary.repository import VocabularyRepository
-from app.modules.vocabulary.schemas import VocabularyCreate, VocabularyUpdate, WordEntryIn
+from app.modules.vocabulary.schemas import (
+    VocabularyCreate,
+    VocabularyOut,
+    VocabularyUpdate,
+    WordEntryIn,
+    WordEntryOut,
+)
 
 SUBJECTS = {"english": "英语", "chinese": "语文"}
 
 
 def normalize_word(value: str) -> str:
     return unicodedata.normalize("NFKC", value).strip().casefold()
+
+
+def vocabulary_to_out(library: Vocabulary) -> VocabularyOut:
+    return VocabularyOut(
+        id=library.id,
+        owner_id=library.owner_user_id,
+        subject=library.subject,
+        name=library.name,
+        description=library.description,
+        tags=[tag.name for tag in library.tags],
+        visibility=library.visibility,
+        published=library.published,
+        entries=[WordEntryOut.model_validate(entry) for entry in library.entries],
+        created_at=library.created_at,
+        updated_at=library.updated_at,
+    )
 
 
 class VocabularyService:
