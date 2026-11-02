@@ -214,6 +214,7 @@ export const taskApi = {
                 playbackMode: 'manual',
                 intervalSeconds: 5,
                 hint: 'phonetic',
+                repeatCount: 1,
               },
             }
           : {}),

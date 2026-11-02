@@ -50,7 +50,6 @@ export const TaskDetailPage = () => {
   const [editOpen, setEditOpen] = useState(false)
   const [deleteStage, setDeleteStage] = useState<0 | 1 | 2>(0)
   const [name, setName] = useState(task?.name ?? '')
-  const [targetCount, setTargetCount] = useState(task?.targetCount ?? 0)
   const [wordsPerGroup, setWordsPerGroup] = useState(task?.config.wordsPerGroup ?? 0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -73,7 +72,6 @@ export const TaskDetailPage = () => {
 
   const openEditor = () => {
     setName(task.name)
-    setTargetCount(task.targetCount)
     setWordsPerGroup(task.config.wordsPerGroup)
     setError('')
     setEditOpen(true)
@@ -84,12 +82,8 @@ export const TaskDetailPage = () => {
       setError('任务名称不能为空')
       return
     }
-    if (!fixed && (targetCount < 1 || targetCount > task.snapshot.length)) {
-      setError(`学习数量需要在 1 到 ${task.snapshot.length} 之间`)
-      return
-    }
-    if (!fixed && (wordsPerGroup < 1 || wordsPerGroup > targetCount)) {
-      setError('每组数量不能大于学习数量')
+    if (!fixed && (wordsPerGroup < 1 || wordsPerGroup > task.targetCount)) {
+      setError('每组数量不能大于已选词条数量')
       return
     }
     setBusy(true)
@@ -100,12 +94,11 @@ export const TaskDetailPage = () => {
         ...(fixed
           ? {}
           : {
-              targetCount,
               config: {
                 ...task.config,
-                questionCount: targetCount,
+                questionCount: task.targetCount,
                 wordsPerGroup,
-                totalGroups: Math.ceil(targetCount / wordsPerGroup),
+                totalGroups: Math.ceil(task.targetCount / wordsPerGroup),
               },
             }),
       })
@@ -197,23 +190,16 @@ export const TaskDetailPage = () => {
                 <dt>学习类型</dt>
                 <dd>{taskTypeLabel(task.type)}</dd>
               </div>
-              {fixed ? (
+              <div>
+                <dt>已选内容</dt>
+                <dd>{task.targetCount} 项词条</dd>
+              </div>
+              {!fixed ? (
                 <div>
-                  <dt>固定内容</dt>
-                  <dd>{task.targetCount} 项词条</dd>
+                  <dt>分组规则</dt>
+                  <dd>每组 {task.config.wordsPerGroup} 项 · 共 {task.config.totalGroups} 组</dd>
                 </div>
-              ) : (
-                <>
-                  <div>
-                    <dt>学习数量</dt>
-                    <dd>{task.targetCount} 项</dd>
-                  </div>
-                  <div>
-                    <dt>分组规则</dt>
-                    <dd>每组 {task.config.wordsPerGroup} 项 · 共 {task.config.totalGroups} 组</dd>
-                  </div>
-                </>
-              )}
+              ) : null}
               <div>
                 <dt>内容来源</dt>
                 <dd>{task.libraryName}</dd>
@@ -241,12 +227,16 @@ export const TaskDetailPage = () => {
                     </dd>
                   </div>
                   <div>
-                    <dt>页面提示</dt>
+                    <dt>朗读时显示</dt>
                     <dd>
                       {task.config.dictation.hint === 'phonetic'
                         ? task.subject === 'english' ? '英语音标' : '语文拼音'
                         : '中文释义'}
                     </dd>
+                  </div>
+                  <div>
+                    <dt>朗读次数</dt>
+                    <dd>{task.config.dictation.repeatCount ?? 1} 次</dd>
                   </div>
                 </>
               ) : null}
@@ -353,26 +343,15 @@ export const TaskDetailPage = () => {
             <TextInput value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           {!fixed ? (
-            <div className="form-grid-two">
-              <Field label="学习数量">
-                <TextInput
-                  type="number"
-                  min={1}
-                  max={task.snapshot.length}
-                  value={targetCount}
-                  onChange={(event) => setTargetCount(Number(event.target.value))}
-                />
-              </Field>
-              <Field label="每组数量">
-                <TextInput
-                  type="number"
-                  min={1}
-                  max={targetCount}
-                  value={wordsPerGroup}
-                  onChange={(event) => setWordsPerGroup(Number(event.target.value))}
-                />
-              </Field>
-            </div>
+            <Field label="每组数量" hint={`已选 ${task.targetCount} 项词条`}>
+              <TextInput
+                type="number"
+                min={1}
+                max={task.targetCount}
+                value={wordsPerGroup}
+                onChange={(event) => setWordsPerGroup(Number(event.target.value))}
+              />
+            </Field>
           ) : null}
           {!fixed ? (
             <div className="info-note">

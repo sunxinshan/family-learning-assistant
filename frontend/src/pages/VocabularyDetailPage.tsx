@@ -261,8 +261,8 @@ export const VocabularyDetailPage = () => {
 
       <section className="library-detail-meta">
         <div>
-          <span className="meta-label">分类</span>
-          <strong>{library.category}</strong>
+          <span className="meta-label">学科</span>
+          <strong>{library.subject === 'english' ? '英语' : '语文'}</strong>
         </div>
         <div>
           <span className="meta-label">词条</span>
@@ -402,7 +402,7 @@ export const VocabularyDetailPage = () => {
       <Modal
         open={metadataOpen}
         title="编辑词库信息"
-        description="名称、描述、分类和标签都可以修改；标签支持自定义。"
+        description="名称、描述、学科和标签都可以修改；标签支持自定义。"
         onClose={() => setMetadataOpen(false)}
         footer={
           <>
@@ -415,7 +415,7 @@ export const VocabularyDetailPage = () => {
       >
         <div className="form-stack">
           {metadataError ? <InlineError>{metadataError}</InlineError> : null}
-          <div className="form-grid-three">
+          <div className="form-grid-two">
             <Field label="学科">
               <SelectInput
                 value={metadataDraft.subject}
@@ -432,12 +432,6 @@ export const VocabularyDetailPage = () => {
                 value={metadataDraft.name}
                 onChange={(event) => setMetadataDraft({ ...metadataDraft, name: event.target.value })}
                 autoFocus
-              />
-            </Field>
-            <Field label="分类">
-              <TextInput
-                value={metadataDraft.category}
-                onChange={(event) => setMetadataDraft({ ...metadataDraft, category: event.target.value })}
               />
             </Field>
           </div>

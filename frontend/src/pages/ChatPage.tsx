@@ -18,6 +18,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { conversationApi } from '../api/mockApi'
 import { mockAgent } from '../api/mockAgent'
 import { AgentAvatar, ChatMessageItem } from '../features/conversation/MessageComponents'
@@ -33,30 +34,9 @@ import type {
 const messageId = () => `message-${crypto.randomUUID()}`
 const now = () => new Date().toISOString()
 
-const suggestions = [
-  {
-    icon: ListChecks,
-    title: '创建学习任务',
-    description: '按词库和数量生成可执行任务',
-    prompt: '创建一个固定的词汇任务，每天 8 个词',
-  },
-  {
-    icon: FileSpreadsheet,
-    title: '导入 Excel 词库',
-    description: '解析字段、预览词条并确认保存',
-    prompt: '我想导入一份 Excel 学习资料',
-    upload: true,
-  },
-  {
-    icon: BookOpenCheck,
-    title: '查看学习记录',
-    description: '了解正确率、错题和掌握情况',
-    prompt: '查看我的学习记录和错题情况',
-  },
-]
-
 export const ChatPage = () => {
-  const { currentUser, showToast, refresh } = useAppStore()
+  const { currentUser, libraries, publicLibraries, showToast, refresh } = useAppStore()
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [hydrated, setHydrated] = useState(false)
   const [input, setInput] = useState('')
@@ -277,6 +257,19 @@ export const ChatPage = () => {
     showToast('当前对话已清空')
   }
 
+  const handleCreateTaskShortcut = () => {
+    const library =
+      libraries.find((item) => item.entries.length > 0) ??
+      publicLibraries.find((item) => item.published && item.entries.length > 0)
+    const libraryName = library?.name ?? '选择一个可用词库'
+    const hintLabel =
+      library?.subject === 'chinese' ? '拼音' : '音标'
+    setInput(
+      `选择词库「${libraryName}」的所有单词生成学习任务。\n听写方式：线上听写；播放方式：手动播放；朗读次数：2 次；朗读时显示：${hintLabel}。`,
+    )
+    window.requestAnimationFrame(() => textareaRef.current?.focus())
+  }
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -285,6 +278,8 @@ export const ChatPage = () => {
   }
 
   if (!currentUser) return null
+
+  const availableLibraries = [...libraries, ...publicLibraries.filter((library) => library.published)]
 
   return (
     <div className="chat-page">
@@ -310,31 +305,8 @@ export const ChatPage = () => {
               <p>
                 用自然语言描述目标。我会先整理配置、展示预览，重要操作确认后才会执行。
               </p>
-              <div className="suggestion-grid">
-                {suggestions.map((suggestion) => {
-                  const Icon = suggestion.icon
-                  return (
-                    <button
-                      key={suggestion.title}
-                      type="button"
-                      className="suggestion-card"
-                      onClick={() => {
-                        if ('upload' in suggestion && suggestion.upload) {
-                          fileInputRef.current?.click()
-                        } else {
-                          void sendMessage(suggestion.prompt)
-                        }
-                      }}
-                      disabled={busy}
-                    >
-                      <span className="suggestion-icon">
-                        <Icon size={18} />
-                      </span>
-                      <strong>{suggestion.title}</strong>
-                      <span>{suggestion.description}</span>
-                    </button>
-                  )
-                })}
+              <div className="welcome-shortcut-note">
+                创建任务、导入词库和查看任务三个快捷入口始终固定显示在输入框上方。
               </div>
               <div className="welcome-boundary">
                 <Settings2 size={14} />
@@ -348,6 +320,7 @@ export const ChatPage = () => {
               key={message.id}
               message={message}
               userName={currentUser.nickname}
+              libraries={availableLibraries}
               busy={busy}
               onConfirm={(action) => void handleConfirm(action)}
               onCancel={handleCancel}
@@ -373,6 +346,20 @@ export const ChatPage = () => {
       </div>
 
       <div className="chat-composer-wrap">
+        <div className="chat-quick-actions" aria-label="常用操作">
+          <button type="button" onClick={handleCreateTaskShortcut} disabled={busy}>
+            <ListChecks size={15} />
+            创建学习任务
+          </button>
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+            <FileSpreadsheet size={15} />
+            导入 Excel 词库
+          </button>
+          <button type="button" onClick={() => navigate('/tasks')}>
+            <BookOpenCheck size={15} />
+            查看学习任务
+          </button>
+        </div>
         <div className={`chat-composer ${busy ? 'is-busy' : ''}`}>
           <textarea
             ref={textareaRef}

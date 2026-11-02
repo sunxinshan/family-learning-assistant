@@ -50,6 +50,7 @@ export interface DictationConfig {
   playbackMode: PlaybackMode
   intervalSeconds: number
   hint: DictationHint
+  repeatCount: number
 }
 
 export interface TaskConfig {

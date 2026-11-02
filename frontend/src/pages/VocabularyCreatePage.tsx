@@ -48,7 +48,6 @@ export const VocabularyCreatePage = () => {
     subject: 'english' as Subject,
     name: '',
     description: '',
-    category: '',
     tags: [] as string[],
   })
   const [entries, setEntries] = useState<WordEntry[]>([])
@@ -152,7 +151,7 @@ export const VocabularyCreatePage = () => {
         subject: form.subject,
         name: form.name,
         description: form.description,
-        category: form.category,
+        category: '未分类',
         tags: form.tags,
         entries,
       }
@@ -219,12 +218,12 @@ export const VocabularyCreatePage = () => {
             <div className="panel-header">
               <div>
                 <h2>基本信息</h2>
-                <p>词库名称、分类和标签均可自定义，后续仍可继续编辑。</p>
+                <p>词库名称、学科和标签均可自定义，后续仍可继续编辑。</p>
               </div>
             </div>
             <div className="form-stack">
               {error ? <InlineError>{error}</InlineError> : null}
-              <div className="form-grid-three">
+              <div className="form-grid-two">
                 <Field label="学科">
                   <SelectInput
                     value={form.subject}
@@ -239,13 +238,6 @@ export const VocabularyCreatePage = () => {
                     value={form.name}
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
                     placeholder="例如：家庭阅读 · 十一月"
-                  />
-                </Field>
-                <Field label="分类">
-                  <TextInput
-                    value={form.category}
-                    onChange={(event) => setForm({ ...form, category: event.target.value })}
-                    placeholder="例如：日常表达"
                   />
                 </Field>
               </div>
@@ -379,7 +371,6 @@ export const VocabularyCreatePage = () => {
               <div><dt>学科</dt><dd>{form.subject === 'english' ? '英语' : '语文'}</dd></div>
               <div><dt>类型</dt><dd>{visibility === 'public' ? '公共词库草稿' : '个人词库'}</dd></div>
               <div><dt>名称</dt><dd>{form.name || '未填写'}</dd></div>
-              <div><dt>分类</dt><dd>{form.category || '未分类'}</dd></div>
               <div><dt>词条</dt><dd>{entries.length} 个</dd></div>
               <div><dt>标签</dt><dd>{form.tags.length ? form.tags.join('、') : '暂无标签'}</dd></div>
             </dl>

@@ -98,8 +98,11 @@ const taskDraftFromText = async (
   if (!matchedLibrary) {
     throw new Error('你还没有个人词库，请先创建或复制一个词库')
   }
+  const allWords = /所有|全部/.test(text)
   const targetCount = Math.min(
-    extractNumber(text, [/每天\s*(\d+)\s*个/, /(\d+)\s*(?:个词|道题|个单词|项)/], 10),
+    allWords
+      ? matchedLibrary.entries.length
+      : extractNumber(text, [/每天\s*(\d+)\s*个/, /(\d+)\s*(?:个词|道题|个单词|项)/], 10),
     matchedLibrary.entries.length,
   )
   const wordsPerGroup = Math.min(
@@ -120,7 +123,7 @@ const taskDraftFromText = async (
     targetCount: mode === 'fixed' ? matchedLibrary.entries.length : targetCount,
     libraryId: matchedLibrary.id,
     selectedEntryIds:
-      mode === 'fixed'
+      mode === 'fixed' || allWords
         ? matchedLibrary.entries.map((entry) => entry.id)
         : matchedLibrary.entries.slice(0, targetCount).map((entry) => entry.id),
     wordsPerGroup: mode === 'fixed' ? matchedLibrary.entries.length : wordsPerGroup,
@@ -128,10 +131,17 @@ const taskDraftFromText = async (
     ...(taskType === 'dictation'
       ? {
           dictation: {
-            mode: 'online' as const,
-            playbackMode: 'manual' as const,
-            intervalSeconds: 5,
-            hint: 'phonetic' as const,
+            mode: /线下听写/.test(text) ? 'offline' as const : 'online' as const,
+            playbackMode: /自动播放|自动/.test(text) ? 'auto' as const : 'manual' as const,
+            intervalSeconds: extractNumber(
+              text,
+              [/间隔\s*(\d+)\s*秒/, /每\s*(\d+)\s*秒/],
+              5,
+            ),
+            hint: /中文(?:释义|意思)|显示中文|朗读中文/.test(text)
+              ? 'meaning' as const
+              : 'phonetic' as const,
+            repeatCount: extractNumber(text, [/朗读\s*(\d+)\s*次/, /重复\s*(\d+)\s*次/], 2),
           },
         }
       : {}),
@@ -249,12 +259,18 @@ const createTaskAction = (draft: TaskDraft, libraryName: string): PendingAction 
     { label: '学习类型', value: draft.type === 'vocabulary' ? '词汇练习' : '听写练习' },
     { label: '任务模式', value: draft.mode === 'fixed' ? '固定任务' : '长期任务' },
     { label: '内容来源', value: libraryName },
-    ...(draft.mode === 'fixed'
-      ? [{ label: '已选词条', value: `${draft.selectedEntryIds.length} 项` }]
-      : [
-          { label: '练习数量', value: `${draft.targetCount} 项` },
-          { label: '分组规则', value: `每组 ${draft.wordsPerGroup} 项` },
-        ]),
+    { label: '已选词条', value: `${draft.selectedEntryIds.length} 项` },
+    ...(draft.mode === 'long_term'
+      ? [{ label: '分组规则', value: `每组 ${draft.wordsPerGroup} 项` }]
+      : []),
+    ...(draft.type === 'dictation' && draft.dictation
+      ? [
+          { label: '听写方式', value: draft.dictation.mode === 'online' ? '线上听写' : '线下听写' },
+          { label: '播放方式', value: draft.dictation.playbackMode === 'auto' ? '自动播放' : '手动播放' },
+          { label: '朗读次数', value: `${draft.dictation.repeatCount} 次` },
+          { label: '朗读时显示', value: draft.dictation.hint === 'phonetic' ? '音标/拼音' : '中文释义' },
+        ]
+      : []),
     { label: '强制答对', value: draft.repeatUntilCorrect ? '开启' : '关闭' },
   ],
   impact: '确认后将保存任务与当前词库内容快照。后续修改原词库不会影响此任务。',
@@ -399,7 +415,10 @@ export const mockAgent = {
         return
       }
 
-      if (/学习记录|正确率|错题|掌握情况|学习情况/.test(text)) {
+      if (
+        /学习记录|正确率|错题|掌握情况|学习情况/.test(text) &&
+        !/创建|新建|安排|生成|修改|删除/.test(text)
+      ) {
         const stats = await emitTool(
           emit,
           'learning.summary',
@@ -504,7 +523,7 @@ export const mockAgent = {
         return
       }
 
-      if (/创建|新建|安排/.test(text) && /任务/.test(text)) {
+      if (/创建|新建|安排|生成/.test(text) && /任务/.test(text)) {
         const taskType = taskTypeFromText(text)
         if (!taskType) {
           emit({

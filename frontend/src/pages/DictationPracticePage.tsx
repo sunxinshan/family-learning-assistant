@@ -29,6 +29,7 @@ const defaultDictationConfig: DictationConfig = {
   playbackMode: 'manual',
   intervalSeconds: 5,
   hint: 'phonetic',
+  repeatCount: 1,
 }
 
 export const DictationPracticePage = () => {
@@ -74,16 +75,21 @@ export const DictationPracticePage = () => {
         return
       }
       window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(word)
-      utterance.lang = task?.subject === 'chinese' ? 'zh-CN' : 'en-US'
-      utterance.rate = task?.subject === 'chinese' ? 0.86 : 0.82
-      utterance.pitch = 1
-      utterance.onstart = () => setPlaying(true)
-      utterance.onend = () => setPlaying(false)
-      utterance.onerror = () => setPlaying(false)
-      window.speechSynthesis.speak(utterance)
+      const repeatCount = Math.max(1, config.repeatCount)
+      for (let index = 0; index < repeatCount; index += 1) {
+        const utterance = new SpeechSynthesisUtterance(word)
+        utterance.lang = task?.subject === 'chinese' ? 'zh-CN' : 'en-US'
+        utterance.rate = task?.subject === 'chinese' ? 0.86 : 0.82
+        utterance.pitch = 1
+        utterance.onstart = () => setPlaying(true)
+        utterance.onend = () => {
+          if (index === repeatCount - 1) setPlaying(false)
+        }
+        utterance.onerror = () => setPlaying(false)
+        window.speechSynthesis.speak(utterance)
+      }
     },
-    [showToast, task?.subject],
+    [config.repeatCount, showToast, task?.subject],
   )
 
   useEffect(() => {
@@ -359,7 +365,9 @@ export const DictationPracticePage = () => {
           <div className="offline-dictation-progress">
             <span>当前第 {offlineIndex + 1} / {task.snapshot.length} 个词</span>
             <Badge tone={config.playbackMode === 'auto' ? 'info' : 'neutral'}>
-              {config.playbackMode === 'auto' ? `自动播放 · ${config.intervalSeconds} 秒` : '手动播放'}
+              {config.playbackMode === 'auto'
+                ? `自动播放 · ${config.intervalSeconds} 秒 · 朗读 ${config.repeatCount} 次`
+                : `手动播放 · 朗读 ${config.repeatCount} 次`}
             </Badge>
           </div>
           <div className="dictation-audio-area offline-audio-area">
@@ -481,8 +489,8 @@ export const DictationPracticePage = () => {
           <Badge>线上听写</Badge>
           <span>
             {config.playbackMode === 'auto'
-              ? `自动播放 · 每 ${config.intervalSeconds} 秒重播`
-              : '手动播放 · 按需重播'}
+              ? `自动播放 · 每 ${config.intervalSeconds} 秒重播 · 每次朗读 ${config.repeatCount} 次`
+              : `手动播放 · 每次朗读 ${config.repeatCount} 次`}
           </span>
         </div>
 

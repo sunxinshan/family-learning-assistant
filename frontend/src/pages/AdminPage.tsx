@@ -216,7 +216,6 @@ export const AdminPage = () => {
                 <tr>
                   <th>词库</th>
                   <th>学科</th>
-                  <th>分类</th>
                   <th>词条数</th>
                   <th>状态</th>
                   <th>更新时间</th>
@@ -233,7 +232,6 @@ export const AdminPage = () => {
                       </div>
                     </td>
                     <td>{library.subject === 'english' ? '英语' : '语文'}</td>
-                    <td>{library.category}</td>
                     <td>{library.entries.length}</td>
                     <td>
                       <Badge tone={library.published ? 'success' : 'warning'}>

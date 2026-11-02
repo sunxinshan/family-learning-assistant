@@ -23,9 +23,15 @@ import {
   TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
-import type { DictationHint, DictationMode, PlaybackMode, TaskType } from '../types/domain'
+import type {
+  DictationHint,
+  DictationMode,
+  PlaybackMode,
+  Subject,
+  TaskType,
+} from '../types/domain'
 import { taskModeLabel, taskTypeLabel } from '../utils/format'
-import { parseEntrySelection } from '../utils/selection'
+import { formatEntrySelection, parseEntrySelection } from '../utils/selection'
 
 export const TaskCreatePage = () => {
   const { currentUser, libraries, publicLibraries, refresh, showToast } = useAppStore()
@@ -40,83 +46,121 @@ export const TaskCreatePage = () => {
     )
   }, [libraries, publicLibraries])
 
+  const [subjectFilter, setSubjectFilter] = useState<'all' | Subject>('all')
+  const subjectLibraries = useMemo(
+    () =>
+      availableLibraries.filter(
+        (library) => subjectFilter === 'all' || library.subject === subjectFilter,
+      ),
+    [availableLibraries, subjectFilter],
+  )
   const [form, setForm] = useState({
     name: '',
     type: 'dictation' as TaskType,
     mode: 'long_term' as 'fixed' | 'long_term',
     libraryId: availableLibraries[0]?.id ?? '',
     wordSelection: 'all',
-    targetCount: Math.min(10, availableLibraries[0]?.entries.length ?? 0),
     wordsPerGroup: Math.min(5, availableLibraries[0]?.entries.length ?? 0),
     repeatUntilCorrect: false,
     dictationMode: 'online' as DictationMode,
     playbackMode: 'manual' as PlaybackMode,
     intervalSeconds: 5,
+    repeatCount: 2,
     hint: 'phonetic' as DictationHint,
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const applyLibrary = (libraryId: string) => {
+    const library = availableLibraries.find((item) => item.id === libraryId)
+    if (!library) return
+    setForm((current) => ({
+      ...current,
+      libraryId,
+      wordSelection: 'all',
+      wordsPerGroup: Math.min(5, library.entries.length),
+      name:
+        current.name ||
+        `${current.type === 'dictation' ? '听写练习' : '词汇学习'} · ${library.name}`,
+    }))
+  }
+
   useEffect(() => {
-    if (availableLibraries.length && !availableLibraries.some((library) => library.id === form.libraryId)) {
-      const library = availableLibraries[0]
-      const count = Math.min(10, library.entries.length)
-      setForm((current) => ({
-        ...current,
-        libraryId: library.id,
-        wordSelection: 'all',
-        targetCount: count,
-        wordsPerGroup: Math.min(5, count),
-        name: current.name || `${current.type === 'dictation' ? '听写练习' : '词汇学习'} · ${library.name}`,
-      }))
+    if (!subjectLibraries.some((library) => library.id === form.libraryId) && subjectLibraries[0]) {
+      applyLibrary(subjectLibraries[0].id)
     }
-  }, [availableLibraries, form.libraryId])
+  }, [subjectLibraries, form.libraryId])
 
   if (!currentUser) return null
 
   const selectedLibrary =
-    availableLibraries.find((library) => library.id === form.libraryId) ?? availableLibraries[0]
-  const selection = parseEntrySelection(form.wordSelection, selectedLibrary?.entries ?? [])
+    subjectLibraries.find((library) => library.id === form.libraryId) ?? subjectLibraries[0]
+  if (!selectedLibrary) {
+    return (
+      <main className="page-container">
+        <Link to="/tasks" className="back-link">
+          <ArrowLeft size={15} />
+          返回任务列表
+        </Link>
+        <EmptyState
+          icon={BookOpenText}
+          title={availableLibraries.length ? '该学科暂无可用词库' : '还没有可用词库'}
+          description="请创建包含词条的个人词库，或使用已发布的公共词库。"
+          action={
+            <div className="empty-actions">
+              <Link className="button button-primary button-md" to="/vocabulary/new">新建词库</Link>
+              <Button onClick={() => setSubjectFilter('all')}>查看全部学科</Button>
+            </div>
+          }
+        />
+      </main>
+    )
+  }
+
+  const selection = parseEntrySelection(form.wordSelection, selectedLibrary.entries)
   const selectedEntries = selection.entries
-  const maxEntries = selectedEntries.length
+  const selectedIds = new Set(selectedEntries.map((entry) => entry.id))
   const fixed = form.mode === 'fixed'
-  const effectiveTargetCount = fixed ? maxEntries : Math.min(form.targetCount, maxEntries)
+  const selectedCount = selectedEntries.length
   const effectiveWordsPerGroup = fixed
-    ? maxEntries
-    : Math.min(form.wordsPerGroup, effectiveTargetCount)
+    ? Math.max(selectedCount, 1)
+    : Math.min(Math.max(form.wordsPerGroup, 1), Math.max(selectedCount, 1))
   const totalGroups = fixed
     ? 1
-    : effectiveTargetCount > 0 && effectiveWordsPerGroup > 0
-      ? Math.ceil(effectiveTargetCount / effectiveWordsPerGroup)
+    : selectedCount > 0
+      ? Math.ceil(selectedCount / effectiveWordsPerGroup)
       : 0
-  const previewEntries = selectedEntries.slice(0, Math.min(effectiveTargetCount || maxEntries, 5))
+  const allSelected = selectedCount === selectedLibrary.entries.length && selectedCount > 0
   const hintPreview = (() => {
     const entry = selectedEntries[0]
-    if (!entry) return '选择一个词条后可预览页面提示'
+    if (!entry) return '勾选词条后可预览朗读时显示的提示'
     if (form.hint === 'phonetic') return entry.phonetic || '该词条暂未填写拼音/音标'
     return entry.meanings.join('；')
   })()
 
-  const selectLibrary = (libraryId: string) => {
-    const library = availableLibraries.find((item) => item.id === libraryId)
-    const count = Math.min(10, library?.entries.length ?? 0)
+  const changeSubjectFilter = (value: 'all' | Subject) => {
+    setSubjectFilter(value)
+    const candidates = availableLibraries.filter(
+      (library) => value === 'all' || library.subject === value,
+    )
+    if (candidates.length) applyLibrary(candidates[0].id)
+  }
+
+  const setSelection = (ids: string[]) => {
     setForm({
       ...form,
-      libraryId,
-      wordSelection: 'all',
-      targetCount: count,
-      wordsPerGroup: Math.min(5, count),
-      name:
-        form.name ||
-        `${form.type === 'dictation' ? '听写练习' : '词汇学习'} · ${library?.name ?? ''}`,
+      wordSelection: formatEntrySelection(ids, selectedLibrary.entries),
     })
   }
 
+  const toggleEntry = (entryId: string) => {
+    const next = new Set(selectedIds)
+    if (next.has(entryId)) next.delete(entryId)
+    else next.add(entryId)
+    setSelection(selectedLibrary.entries.filter((entry) => next.has(entry.id)).map((entry) => entry.id))
+  }
+
   const submit = async () => {
-    if (!selectedLibrary) {
-      setError('请先创建或复制一个词库')
-      return
-    }
     if (!form.name.trim()) {
       setError('请输入任务名称')
       return
@@ -126,15 +170,11 @@ export const TaskCreatePage = () => {
       return
     }
     if (!selectedEntries.length) {
-      setError('请至少选择一个词条')
+      setError('请至少勾选一个词条')
       return
     }
-    if (!fixed && (effectiveTargetCount < 1 || effectiveTargetCount > maxEntries)) {
-      setError(`学习数量需要在 1 到 ${maxEntries} 之间`)
-      return
-    }
-    if (!fixed && (effectiveWordsPerGroup < 1 || effectiveWordsPerGroup > effectiveTargetCount)) {
-      setError('每组数量不能大于学习数量')
+    if (!fixed && (form.wordsPerGroup < 1 || form.wordsPerGroup > selectedCount)) {
+      setError('每组数量不能大于已选词条数量')
       return
     }
     setSaving(true)
@@ -144,7 +184,7 @@ export const TaskCreatePage = () => {
         name: form.name,
         type: form.type,
         mode: form.mode,
-        targetCount: effectiveTargetCount,
+        targetCount: selectedCount,
         libraryId: selectedLibrary.id,
         selectedEntryIds: selectedEntries.map((entry) => entry.id),
         wordsPerGroup: effectiveWordsPerGroup,
@@ -156,6 +196,7 @@ export const TaskCreatePage = () => {
                 playbackMode: form.playbackMode,
                 intervalSeconds: form.playbackMode === 'auto' ? form.intervalSeconds : 5,
                 hint: form.hint,
+                repeatCount: Math.max(1, form.repeatCount),
               },
             }
           : {}),
@@ -201,7 +242,7 @@ export const TaskCreatePage = () => {
       <PageHeader
         eyebrow="Page Builder"
         title="新建学习任务"
-        description="无需通过 Agent，直接配置学习类型、内容来源、词条范围、任务模式和听写参数。"
+        description="无需通过 Agent，直接配置学习类型、学科词库、词条勾选、任务模式和听写参数。"
         actions={
           <Button variant="primary" loading={saving} icon={Play} onClick={() => void submit()}>
             创建任务
@@ -222,7 +263,7 @@ export const TaskCreatePage = () => {
             <div className="panel-header">
               <div>
                 <h2>任务配置</h2>
-                <p>听写练习为默认类型；固定任务无需设置学习数量和每组数量。</p>
+                <p>听写练习为默认类型；任务数量完全取决于下方勾选的词条。</p>
               </div>
             </div>
 
@@ -266,68 +307,96 @@ export const TaskCreatePage = () => {
                 </Field>
               </div>
 
-              <Field label="内容来源" hint="个人词库或已发布的公共词库">
-                <SelectInput value={form.libraryId} onChange={(event) => selectLibrary(event.target.value)}>
-                  {availableLibraries.map((library) => (
-                    <option key={library.id} value={library.id}>
-                      {library.subject === 'english' ? '英语' : '语文'} · {library.name} · {library.entries.length} 个词条
-                      {library.visibility === 'public' ? ' · 公共' : ' · 个人'}
-                    </option>
-                  ))}
-                </SelectInput>
-              </Field>
+              <div className="form-grid-two">
+                <Field label="学科筛选">
+                  <SelectInput
+                    value={subjectFilter}
+                    onChange={(event) => changeSubjectFilter(event.target.value as 'all' | Subject)}
+                  >
+                    <option value="all">全部学科</option>
+                    <option value="english">英语</option>
+                    <option value="chinese">语文</option>
+                  </SelectInput>
+                </Field>
+                <Field label="内容来源" hint="个人词库或已发布的公共词库">
+                  <SelectInput value={selectedLibrary.id} onChange={(event) => applyLibrary(event.target.value)}>
+                    {subjectLibraries.map((library) => (
+                      <option key={library.id} value={library.id}>
+                        {library.subject === 'english' ? '英语' : '语文'} · {library.name} · {library.entries.length} 个词条
+                        {library.visibility === 'public' ? ' · 公共' : ' · 个人'}
+                      </option>
+                    ))}
+                  </SelectInput>
+                </Field>
+              </div>
 
-              <Field
-                label="选择词条"
-                hint={`已选 ${selectedEntries.length} / ${selectedLibrary.entries.length} 项。输入 all、2-10、4,8 等序列范围。`}
-              >
+              <div className="word-picker-panel">
+                <div className="word-picker-heading">
+                  <div>
+                    <h3>选择词库词条</h3>
+                    <p>序号输入与勾选状态实时同步；支持 all、2-10、4,8 等表达。</p>
+                  </div>
+                  <Badge tone={allSelected ? 'success' : 'neutral'}>
+                    已选 {selectedCount} / {selectedLibrary.entries.length}
+                  </Badge>
+                </div>
                 <div className="word-selection-row">
                   <TextInput
                     value={form.wordSelection}
                     onChange={(event) => setForm({ ...form, wordSelection: event.target.value })}
                     placeholder="例如：2-10, 4, 8"
+                    aria-label="选择词条序号"
                   />
                   <Button
                     size="sm"
                     icon={ListChecks}
-                    onClick={() => setForm({ ...form, wordSelection: 'all' })}
+                    onClick={() => setForm({ ...form, wordSelection: allSelected ? '' : 'all' })}
                   >
-                    全选
+                    {allSelected ? '取消全选' : '全选'}
                   </Button>
                 </div>
-              </Field>
-              {selection.invalidTokens.length ? (
-                <InlineError>
-                  无法识别：{selection.invalidTokens.join('、')}。请输入有效序号，例如 2-10, 4, 8。
-                </InlineError>
-              ) : null}
+                {selection.invalidTokens.length ? (
+                  <InlineError>
+                    无法识别：{selection.invalidTokens.join('、')}。请输入有效序号，例如 2-10, 4, 8。
+                  </InlineError>
+                ) : null}
+                <div className="word-picker-list">
+                  {selectedLibrary.entries.map((entry, index) => (
+                    <label
+                      key={entry.id}
+                      className={`word-picker-row ${selectedIds.has(entry.id) ? 'is-selected' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(entry.id)}
+                        onChange={() => toggleEntry(entry.id)}
+                      />
+                      <span className="word-picker-index">{String(index + 1).padStart(2, '0')}</span>
+                      <div className="word-picker-word">
+                        <strong>{entry.word}</strong>
+                        <span>{entry.phonetic}</span>
+                      </div>
+                      <p>{entry.meanings.join('；')}</p>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
               {fixed ? (
                 <div className="info-note">
                   <Info size={15} />
-                  固定任务直接使用已选 {selectedEntries.length} 个词条，不需要学习数量和每组数量。
+                  固定任务直接使用已选 {selectedCount} 个词条，不需要学习数量和每组数量。
                 </div>
               ) : (
-                <div className="form-grid-two">
-                  <Field label="学习数量" hint={`最多 ${maxEntries} 项`}>
-                    <TextInput
-                      type="number"
-                      min={1}
-                      max={maxEntries}
-                      value={form.targetCount}
-                      onChange={(event) => setForm({ ...form, targetCount: Number(event.target.value) })}
-                    />
-                  </Field>
-                  <Field label="每组数量">
-                    <TextInput
-                      type="number"
-                      min={1}
-                      max={Math.max(1, maxEntries)}
-                      value={form.wordsPerGroup}
-                      onChange={(event) => setForm({ ...form, wordsPerGroup: Number(event.target.value) })}
-                    />
-                  </Field>
-                </div>
+                <Field label="每组数量" hint={`已选 ${selectedCount} 项；学习数量自动等于勾选数量`}>
+                  <TextInput
+                    type="number"
+                    min={1}
+                    max={Math.max(selectedCount, 1)}
+                    value={form.wordsPerGroup}
+                    onChange={(event) => setForm({ ...form, wordsPerGroup: Number(event.target.value) })}
+                  />
+                </Field>
               )}
 
               {form.type === 'dictation' ? (
@@ -363,9 +432,9 @@ export const TaskCreatePage = () => {
                       </SelectInput>
                     </Field>
                   </div>
-                  <div className="form-grid-two">
+                  <div className="form-grid-three">
                     {form.playbackMode === 'auto' ? (
-                      <Field label="自动播放间隔" hint="练习页面会显示倒计时">
+                      <Field label="自动播放间隔" hint="练习页面显示倒计时">
                         <TextInput
                           type="number"
                           min={2}
@@ -377,7 +446,18 @@ export const TaskCreatePage = () => {
                         />
                       </Field>
                     ) : <div />}
-                    <Field label="页面显示内容">
+                    <Field label="朗读次数">
+                      <TextInput
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={form.repeatCount}
+                        onChange={(event) =>
+                          setForm({ ...form, repeatCount: Number(event.target.value) })
+                        }
+                      />
+                    </Field>
+                    <Field label="朗读时显示">
                       <SelectInput
                         value={form.hint}
                         onChange={(event) =>
@@ -412,25 +492,6 @@ export const TaskCreatePage = () => {
               </div>
             </div>
           </section>
-
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>内容预览</h2>
-                <p>展示已选词条中的前 {previewEntries.length} 项，实际任务将保存 {effectiveTargetCount} 个词条快照。</p>
-              </div>
-            </div>
-            <div className="task-preview-list">
-              {previewEntries.map((entry, index) => (
-                <div key={entry.id}>
-                  <span>{String(index + 1).padStart(2, '0')}</span>
-                  <strong>{entry.word}</strong>
-                  <small>{entry.phonetic}</small>
-                  <p>{entry.meanings.join('；')}</p>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
 
         <aside className="creation-side">
@@ -443,17 +504,21 @@ export const TaskCreatePage = () => {
             <p>{selectedLibrary.subject === 'english' ? '英语' : '语文'} · {selectedLibrary.name}</p>
             <dl className="create-summary-list">
               <div><dt>任务模式</dt><dd>{taskModeLabel(form.mode)}</dd></div>
-              <div><dt>已选词条</dt><dd>{selectedEntries.length} 项</dd></div>
-              {fixed ? (
-                <div><dt>数量/分组</dt><dd>固定内容无需设置</dd></div>
-              ) : (
-                <div><dt>数量/分组</dt><dd>{effectiveTargetCount} 项 · {totalGroups} 组 · 每组 {effectiveWordsPerGroup} 项</dd></div>
-              )}
+              <div><dt>已选词条</dt><dd>{selectedCount} 项</dd></div>
+              <div>
+                <dt>数量/分组</dt>
+                <dd>
+                  {fixed
+                    ? '固定内容无需设置'
+                    : `${selectedCount} 项 · ${totalGroups} 组 · 每组 ${effectiveWordsPerGroup} 项`}
+                </dd>
+              </div>
               {form.type === 'dictation' ? (
                 <>
                   <div><dt>听写方式</dt><dd>{form.dictationMode === 'online' ? '线上听写' : '线下听写'}</dd></div>
                   <div><dt>播放方式</dt><dd>{form.playbackMode === 'auto' ? `自动 · ${form.intervalSeconds} 秒` : '手动'}</dd></div>
-                  <div><dt>页面提示</dt><dd>{form.hint === 'phonetic' ? (selectedLibrary.subject === 'english' ? '英语音标' : '语文拼音') : '中文释义'}</dd></div>
+                  <div><dt>朗读次数</dt><dd>{form.repeatCount} 次</dd></div>
+                  <div><dt>朗读时显示</dt><dd>{form.hint === 'phonetic' ? (selectedLibrary.subject === 'english' ? '英语音标' : '语文拼音') : '中文释义'}</dd></div>
                 </>
               ) : null}
               <div><dt>强制重做</dt><dd>{form.repeatUntilCorrect ? '开启' : '关闭'}</dd></div>

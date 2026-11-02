@@ -14,7 +14,7 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -23,7 +23,9 @@ import type {
   ChatMessage,
   PendingAction,
   ToolExecution,
+  Vocabulary,
 } from '../../types/domain'
+import { TaskActionEditor } from './TaskActionEditor'
 import { formatFileSize } from '../../utils/format'
 
 export const AgentAvatar = () => (
@@ -111,99 +113,137 @@ const ExecutionCard = ({ execution }: { execution: ToolExecution }) => {
 
 export const ActionPreview = ({
   action,
+  libraries,
   onConfirm,
   onCancel,
   disabled = false,
 }: {
   action: PendingAction
+  libraries: Vocabulary[]
   onConfirm: (action: PendingAction) => void
   onCancel: (action: PendingAction) => void
   disabled?: boolean
-}) => (
-  <section className={`action-preview ${action.danger ? 'action-danger' : ''}`}>
-    <header className="action-preview-head">
-      <div className="action-preview-icon">
-        {action.danger ? <ShieldAlert size={17} /> : <Wrench size={17} />}
-      </div>
-      <div className="action-preview-title">
-        <div>
-          {action.executed ? (
-            <Badge tone="success">已处理</Badge>
-          ) : (
-            <Badge tone={action.danger ? 'danger' : 'neutral'}>
-              {action.stage === 2 ? '二次确认' : '等待确认'}
-            </Badge>
-          )}
+}) => {
+  const [editedDraft, setEditedDraft] = useState(action.payload.taskDraft)
+  const [editorValid, setEditorValid] = useState(true)
+  const editableTask = action.operation === 'create_task' && Boolean(editedDraft)
+
+  useEffect(() => {
+    setEditedDraft(action.payload.taskDraft)
+    setEditorValid(true)
+  }, [action.id])
+
+  const effectiveAction: PendingAction =
+    editableTask && editedDraft
+      ? {
+          ...action,
+          target: editedDraft.name,
+          payload: { ...action.payload, taskDraft: editedDraft },
+        }
+      : action
+
+  return (
+    <section className={`action-preview ${action.danger ? 'action-danger' : ''}`}>
+      <header className="action-preview-head">
+        <div className="action-preview-icon">
+          {action.danger ? <ShieldAlert size={17} /> : <Wrench size={17} />}
         </div>
-        <h3>{action.title}</h3>
-        <p>{action.description}</p>
-      </div>
-    </header>
-
-    <div className="action-target">
-      <span>目标对象</span>
-      <strong>{action.target}</strong>
-    </div>
-
-    {action.fields.length > 0 ? (
-      <dl className="action-fields">
-        {action.fields.map((field) => (
-          <div key={field.label}>
-            <dt>{field.label}</dt>
-            <dd>{field.value}</dd>
+        <div className="action-preview-title">
+          <div>
+            {action.executed ? (
+              <Badge tone="success">已处理</Badge>
+            ) : (
+              <Badge tone={action.danger ? 'danger' : 'neutral'}>
+                {action.stage === 2 ? '二次确认' : '等待确认'}
+              </Badge>
+            )}
           </div>
-        ))}
-      </dl>
-    ) : null}
-
-    {action.diff?.length ? (
-      <div className="action-diff">
-        <div className="diff-column diff-before">
-          <span>修改前</span>
-          {action.diff.map((item) => (
-            <div key={item.label}>
-              <small>{item.label}</small>
-              <strong>{item.before}</strong>
-            </div>
-          ))}
+          <h3>{action.title}</h3>
+          <p>{action.description}</p>
         </div>
-        <div className="diff-arrow">→</div>
-        <div className="diff-column diff-after">
-          <span>修改后</span>
-          {action.diff.map((item) => (
-            <div key={item.label}>
-              <small>{item.label}</small>
-              <strong>{item.after}</strong>
-            </div>
-          ))}
+      </header>
+
+      <div className="action-target">
+        <span>目标对象</span>
+        <strong>{effectiveAction.target}</strong>
+      </div>
+
+      {editableTask && editedDraft ? (
+        <div className="task-action-editor-wrap">
+          <div className="task-action-editor-note">
+            任务确认前可继续修改全部配置；勾选与序号输入保持同步。
+          </div>
+          <TaskActionEditor
+            action={effectiveAction}
+            libraries={libraries}
+            onChange={setEditedDraft}
+            onValidityChange={setEditorValid}
+          />
         </div>
-      </div>
-    ) : null}
+      ) : (
+        <>
+          {action.fields.length > 0 ? (
+            <dl className="action-fields">
+              {action.fields.map((field) => (
+                <div key={field.label}>
+                  <dt>{field.label}</dt>
+                  <dd>{field.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
 
-    <div className="action-impact">
-      <AlertCircle size={15} />
-      <span>{action.impact}</span>
-    </div>
+          {action.diff?.length ? (
+            <div className="action-diff">
+              <div className="diff-column diff-before">
+                <span>修改前</span>
+                {action.diff.map((item) => (
+                  <div key={item.label}>
+                    <small>{item.label}</small>
+                    <strong>{item.before}</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="diff-arrow">→</div>
+              <div className="diff-column diff-after">
+                <span>修改后</span>
+                {action.diff.map((item) => (
+                  <div key={item.label}>
+                    <small>{item.label}</small>
+                    <strong>{item.after}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
 
-    <footer className="action-footer">
-      <span>确认前不会写入业务数据</span>
-      <div>
-        <Button size="sm" onClick={() => onCancel(action)} disabled={disabled || action.executed}>
-          取消
-        </Button>
-        <Button
-          size="sm"
-          variant={action.danger ? 'danger' : 'primary'}
-          onClick={() => onConfirm(action)}
-          disabled={disabled || action.executed}
-          icon={action.danger ? ShieldAlert : Check}
-        >
-          {action.confirmLabel}
-        </Button>
+      <div className="action-impact">
+        <AlertCircle size={15} />
+        <span>{action.impact}</span>
       </div>
-    </footer>
-  </section>
-)
+
+      <footer className="action-footer">
+        <span>确认前不会写入业务数据</span>
+        <div>
+          <Button size="sm" onClick={() => onCancel(action)} disabled={disabled || action.executed}>
+            取消
+          </Button>
+          <Button
+            size="sm"
+            variant={action.danger ? 'danger' : 'primary'}
+            onClick={() => onConfirm(effectiveAction)}
+            disabled={disabled || action.executed || (editableTask && !editorValid)}
+            icon={action.danger ? ShieldAlert : Check}
+          >
+            {action.confirmLabel}
+          </Button>
+        </div>
+      </footer>
+    </section>
+  )
+}
 
 const FileMessage = ({ message }: { message: ChatMessage }) => (
   <div className="chat-file-card">
@@ -224,6 +264,7 @@ const FileMessage = ({ message }: { message: ChatMessage }) => (
 export const ChatMessageItem = ({
   message,
   userName,
+  libraries,
   busy,
   onConfirm,
   onCancel,
@@ -231,6 +272,7 @@ export const ChatMessageItem = ({
 }: {
   message: ChatMessage
   userName: string
+  libraries: Vocabulary[]
   busy: boolean
   onConfirm: (action: PendingAction) => void
   onCancel: (action: PendingAction) => void
@@ -277,6 +319,7 @@ export const ChatMessageItem = ({
         <div className="chat-agent-content">
           <ActionPreview
             action={message.action}
+            libraries={libraries}
             onConfirm={onConfirm}
             onCancel={onCancel}
             disabled={busy}

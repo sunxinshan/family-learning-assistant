@@ -83,6 +83,7 @@ const migrateLearningData = (): void => {
                   playbackMode: 'manual',
                   intervalSeconds: 5,
                   hint: 'phonetic',
+                  repeatCount: 1,
                 },
               }
             : task.config,

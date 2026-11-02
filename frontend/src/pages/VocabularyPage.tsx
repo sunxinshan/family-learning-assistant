@@ -55,7 +55,6 @@ const LibraryCard = ({
       <p>{library.description || '暂无描述'}</p>
     </div>
     <div className="library-chip-row">
-      <span>{library.category}</span>
       {library.tags.slice(0, 2).map((tag) => (
         <span key={tag}>{tag}</span>
       ))}
@@ -185,7 +184,7 @@ export const VocabularyPage = () => {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索名称、分类或标签"
+              placeholder="搜索名称、学科或标签"
               aria-label="搜索词库"
             />
           </div>

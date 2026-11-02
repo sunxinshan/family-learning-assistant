@@ -56,3 +56,32 @@ export const parseEntrySelection = (
     invalidTokens,
   }
 }
+
+export const formatEntrySelection = (
+  selectedEntryIds: string[],
+  entries: WordEntry[],
+): string => {
+  const selected = new Set(selectedEntryIds)
+  const indexes = entries
+    .map((entry, index) => (selected.has(entry.id) ? index + 1 : null))
+    .filter((index): index is number => index !== null)
+  if (!indexes.length) return ''
+  if (indexes.length === entries.length) return 'all'
+
+  const parts: string[] = []
+  let start = indexes[0]
+  let previous = indexes[0]
+  for (let index = 1; index <= indexes.length; index += 1) {
+    const current = indexes[index]
+    if (current !== undefined && current === previous + 1) {
+      previous = current
+      continue
+    }
+    parts.push(start === previous ? `${start}` : `${start}-${previous}`)
+    if (current !== undefined) {
+      start = current
+      previous = current
+    }
+  }
+  return parts.join(',')
+}
