@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.core.context import request_id_var
+from app.core.metrics import metrics
 
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
@@ -23,10 +24,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         request_id = incoming if REQUEST_ID_PATTERN.fullmatch(incoming) else str(uuid.uuid4())
         token = request_id_var.set(request_id)
         started = time.perf_counter()
+        metrics.request_started()
         try:
             response = await call_next(request)
         except Exception:
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
+            metrics.request_aborted(duration_ms)
             self.logger.exception(
                 "request failed",
                 extra={
@@ -40,7 +43,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             raise
 
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        metrics.request_finished(response.status_code, duration_ms)
         response.headers[self.header_name] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         self.logger.info(
             "request completed",
             extra={

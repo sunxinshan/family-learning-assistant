@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     refresh_token_days: int = 30
     seed_demo_data: bool = True
+    bootstrap_admin_1_nickname: str | None = None
+    bootstrap_admin_1_password: SecretStr | None = None
+    bootstrap_admin_2_nickname: str | None = None
+    bootstrap_admin_2_password: SecretStr | None = None
     upload_dir: str = "./data/uploads"
     max_upload_bytes: int = 10 * 1024 * 1024
     mastery_threshold: int = 2
@@ -50,6 +54,18 @@ class Settings(BaseSettings):
         if parsed.scheme not in allowed_schemes:
             raise ValueError("FLA_DATABASE_URL must use sqlite:/// or mysql+pymysql://")
         return value
+
+    @model_validator(mode="after")
+    def validate_bootstrap_admin_pairs(self) -> "Settings":
+        for index in (1, 2):
+            nickname = getattr(self, f"bootstrap_admin_{index}_nickname")
+            password = getattr(self, f"bootstrap_admin_{index}_password")
+            if bool(nickname) != bool(password):
+                raise ValueError(
+                    f"FLA_BOOTSTRAP_ADMIN_{index}_NICKNAME and "
+                    f"FLA_BOOTSTRAP_ADMIN_{index}_PASSWORD must be configured together"
+                )
+        return self
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

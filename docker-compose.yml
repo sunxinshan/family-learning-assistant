@@ -1,0 +1,67 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-root-password}
+      MYSQL_DATABASE: familylearning
+      MYSQL_USER: ${MYSQL_USER:-fla}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-database-password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./deploy/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-change-root-password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      FLA_ENVIRONMENT: production
+      FLA_DATABASE_URL: mysql+pymysql://${MYSQL_USER:-fla}:${MYSQL_PASSWORD:-change-database-password}@mysql:3306/familylearning?charset=utf8mb4
+      FLA_JWT_SECRET: ${FLA_JWT_SECRET:?set FLA_JWT_SECRET in .env}
+      FLA_SEED_DEMO_DATA: "false"
+      FLA_BOOTSTRAP_ADMIN_1_NICKNAME: ${FLA_BOOTSTRAP_ADMIN_1_NICKNAME:-}
+      FLA_BOOTSTRAP_ADMIN_1_PASSWORD: ${FLA_BOOTSTRAP_ADMIN_1_PASSWORD:-}
+      FLA_BOOTSTRAP_ADMIN_2_NICKNAME: ${FLA_BOOTSTRAP_ADMIN_2_NICKNAME:-}
+      FLA_BOOTSTRAP_ADMIN_2_PASSWORD: ${FLA_BOOTSTRAP_ADMIN_2_PASSWORD:-}
+      FLA_CHECKPOINT_BACKEND: mysql
+      FLA_CHECKPOINT_URL: mysql://${MYSQL_USER:-fla}:${MYSQL_PASSWORD:-change-database-password}@mysql:3306/familylearning_checkpoints?charset=utf8mb4
+      FLA_PROMPT_DIR: /app/app/modules/agent/prompts
+      FLA_UPLOAD_DIR: /app/data/uploads
+      FLA_CORS_ORIGINS: '["http://localhost:8080"]'
+    volumes:
+      - uploads_data:/app/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+volumes:
+  mysql_data:
+  uploads_data:

@@ -31,7 +31,7 @@ from app.modules.conversation.router import router as conversation_router
 from app.modules.learning.router import router as learning_router
 from app.modules.material.router import router as material_router
 from app.modules.practice.router import router as practice_router
-from app.modules.seeder import seed_demo
+from app.modules.seeder import seed_bootstrap_admins, seed_demo
 from app.modules.task.router import router as task_router
 from app.modules.user.router import router as user_router
 from app.modules.vocabulary.router import router as vocabulary_router
@@ -53,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with checkpointer_manager as checkpointer:
             if resolved_settings.seed_demo_data:
                 seed_demo(database)
+            seed_bootstrap_admins(database)
             application.state.agent_runtime = AgentRuntime(
                 database=database,
                 checkpointer=checkpointer,

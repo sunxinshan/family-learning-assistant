@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -26,6 +27,7 @@ class UserService:
         payload = {
             "sub": user.id,
             "role": user.role,
+            "jti": str(uuid.uuid4()),
             "iat": now,
             "exp": now + timedelta(minutes=self.settings.access_token_minutes),
         }

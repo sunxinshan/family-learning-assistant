@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
+from app.core.metrics import metrics
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -24,6 +25,11 @@ def live(request: Request) -> HealthResponse:
         environment=settings.environment,
         version=settings.app_version,
     )
+
+
+@router.get("/metrics")
+def runtime_metrics() -> dict:
+    return metrics.snapshot()
 
 
 @router.get("/ready", response_model=HealthResponse)
