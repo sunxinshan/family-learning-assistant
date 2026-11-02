@@ -267,6 +267,31 @@ class AgentRuntime:
             session.commit()
             yield self._sse(done_event)
 
+    def validate_confirm(
+        self, run_id: str, user_id: str, action_id: str, draft_version: int, config_hash: str
+    ) -> None:
+        with self.database.session() as session:
+            repository = AgentRepository(session)
+            run = repository.get_run(run_id)
+            if not run or run.user_id != user_id:
+                raise AppError("run_not_found", "执行记录不存在", status_code=404)
+            if run.status != "waiting_confirmation" or not run.pending_action_json:
+                raise AppError("run_not_waiting", "当前操作不在等待确认状态", status_code=409)
+            if (
+                action_id != run.id
+                or draft_version != run.draft_version
+                or config_hash != run.config_hash
+            ):
+                raise AppError(
+                    "action_version_conflict", "确认配置已过期，请刷新预览", status_code=409
+                )
+
+    def validate_run_access(self, run_id: str, user_id: str) -> None:
+        with self.database.session() as session:
+            run = AgentRepository(session).get_run(run_id)
+            if not run or run.user_id != user_id:
+                raise AppError("run_not_found", "执行记录不存在", status_code=404)
+
     def confirm(
         self, run_id: str, user_id: str, action_id: str, draft_version: int, config_hash: str
     ) -> Iterator[str]:

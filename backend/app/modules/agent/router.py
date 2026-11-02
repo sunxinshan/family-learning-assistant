@@ -60,6 +60,7 @@ def replay_events(
     context: RuntimeContext = Depends(get_runtime_context),
     runtime: AgentRuntime = Depends(get_runtime),
 ) -> StreamingResponse:
+    runtime.validate_run_access(run_id, context.user_id)
     return StreamingResponse(
         runtime.event_stream(run_id, context.user_id, after_sequence),
         media_type="text/event-stream",
@@ -83,6 +84,13 @@ def confirm_action(
     context: RuntimeContext = Depends(get_runtime_context),
     runtime: AgentRuntime = Depends(get_runtime),
 ) -> StreamingResponse:
+    runtime.validate_confirm(
+        run_id,
+        context.user_id,
+        run_id,
+        payload.draft_version,
+        payload.config_hash,
+    )
     return StreamingResponse(
         runtime.confirm(
             run_id,
