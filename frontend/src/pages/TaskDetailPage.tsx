@@ -74,7 +74,7 @@ export const TaskDetailPage = () => {
     task?.config.dictation?.playbackMode ?? 'manual',
   )
   const [intervalSeconds, setIntervalSeconds] = useState(
-    task?.config.dictation?.intervalSeconds ?? 5,
+    task?.config.dictation?.intervalSeconds ?? 8,
   )
   const [repeatCount, setRepeatCount] = useState(task?.config.dictation?.repeatCount ?? 1)
   const [hint, setHint] = useState<DictationHint>(task?.config.dictation?.hint ?? 'phonetic')
@@ -126,7 +126,7 @@ export const TaskDetailPage = () => {
     setRepeatUntilCorrect(task.config.repeatUntilCorrect)
     setDictationMode(task.config.dictation?.mode ?? 'online')
     setPlaybackMode(task.config.dictation?.playbackMode ?? 'manual')
-    setIntervalSeconds(task.config.dictation?.intervalSeconds ?? 5)
+    setIntervalSeconds(task.config.dictation?.intervalSeconds ?? 8)
     setRepeatCount(task.config.dictation?.repeatCount ?? 1)
     setHint(task.config.dictation?.hint ?? 'phonetic')
     setError('')

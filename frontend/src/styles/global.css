@@ -4741,6 +4741,27 @@ ol {
   font-variant-numeric: tabular-nums;
 }
 
+.auto-play-countdown.is-paused {
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border);
+}
+
+.auto-play-toggle {
+  margin-left: 4px;
+  padding: 2px 9px;
+  color: inherit;
+  font-size: 10px;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.auto-play-toggle:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
 .offline-dictation-progress {
   display: flex;
   align-items: center;

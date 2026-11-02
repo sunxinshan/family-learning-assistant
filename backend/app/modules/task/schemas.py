@@ -9,7 +9,7 @@ from app.api.schemas import CamelModel
 class DictationConfig(CamelModel):
     mode: Literal["online", "offline"] = "online"
     playback_mode: Literal["auto", "manual"] = "manual"
-    interval_seconds: int = Field(default=5, ge=2, le=60)
+    interval_seconds: int = Field(default=8, ge=2, le=60)
     hint: Literal["phonetic", "meaning"] = "phonetic"
     repeat_count: int = Field(default=2, ge=1, le=5)
 

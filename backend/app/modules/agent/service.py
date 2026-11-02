@@ -110,7 +110,7 @@ def _prepare_task_action(state: AgentState, service: "AgentBusinessService") -> 
     repeat_match = re.search(r"朗读\s*(\d+)\s*次", text)
     if repeat_match:
         repeat_count = max(1, min(5, int(repeat_match.group(1))))
-    interval = 5
+    interval = 8
     interval_match = re.search(r"间隔\s*(\d+)\s*秒", text)
     if interval_match:
         interval = max(2, min(60, int(interval_match.group(1))))

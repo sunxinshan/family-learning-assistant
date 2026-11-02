@@ -38,9 +38,7 @@ async function stubSpeech(page: Page) {
       pending: false,
       paused: false,
       getVoices: () => voices,
-      cancel: () => {
-        spoken.length = 0
-      },
+      cancel: () => undefined,
       speak: (utterance: SpeechSynthesisUtterance) => {
         spoken.push({
           text: utterance.text,
@@ -67,7 +65,11 @@ const readSpoken = (page: Page) =>
         .__spoken,
   )
 
-async function openEnglishDictation(page: Page, suffix: string) {
+async function openEnglishDictation(
+  page: Page,
+  suffix: string,
+  options: { playbackMode?: 'auto' | 'manual'; intervalSeconds?: number } = {},
+) {
   await page.goto('/vocabulary/new')
   await page.locator('input[type=file]').setInputFiles({
     name: `Dictation Library ${suffix}.csv`,
@@ -84,32 +86,70 @@ async function openEnglishDictation(page: Page, suffix: string) {
   await page.getByRole('button', { name: '全选' }).click()
   await expect(page.getByLabel('朗读内容')).toHaveValue('phonetic')
   await expect(page.getByLabel('朗读内容').locator('option:checked')).toHaveText('英语单词')
+  if (options.playbackMode === 'auto') {
+    await page.getByLabel('播放方式').selectOption('auto')
+    await expect(page.getByLabel('自动播放间隔')).toHaveValue('8')
+    await page.getByLabel('自动播放间隔').fill(String(options.intervalSeconds ?? 8))
+  }
   await page.getByRole('button', { name: '创建并保存快照' }).click()
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
   await page.getByRole('link', { name: '开始学习' }).click()
   await expect(page.getByLabel('输入你听到的词语')).toBeVisible()
 }
 
-test('English dictation reads the word itself, not the IPA string', async ({ page }) => {
+test('English dictation reads the word itself on entering, not the IPA string', async ({
+  page,
+}) => {
   const suffix = uid()
   await stubSpeech(page)
   await register(page, `Audio${suffix}`)
   await openEnglishDictation(page, suffix)
 
-  await page.locator('.audio-play-button').click()
+  // 手动模式也不再需要先点播放：进入词语就开始朗读（默认朗读 2 次）。
   await page.waitForFunction(
     () =>
       (window as unknown as { __spoken: unknown[] }).__spoken.length >= 2,
   )
 
   const spoken = await readSpoken(page)
-  expect(spoken).toHaveLength(2)
+  expect(spoken.length).toBeGreaterThanOrEqual(2)
   for (const item of spoken) {
     expect(item.text).toBe('apple')
     expect(item.lang).toBe('en-US')
     expect(item.voice).toBe('Samantha')
   }
   expect(spoken.map((item) => item.text)).not.toContain('/ˈæpl/')
+
+  // 重播按钮（移动端为圆形播放键）仍然可以手动再念一遍。
+  await page.locator('.audio-play-button').click()
+  await expect
+    .poll(async () => (await readSpoken(page)).length)
+    .toBeGreaterThan(spoken.length)
+})
+
+test('auto playback moves to the next word on the interval and can be paused', async ({
+  page,
+}) => {
+  const suffix = uid()
+  await stubSpeech(page)
+  await register(page, `Auto${suffix}`)
+  await openEnglishDictation(page, suffix, { playbackMode: 'auto', intervalSeconds: 2 })
+
+  const progress = page.locator('.practice-progress span').first()
+  await expect(progress).toHaveText('1 / 2')
+
+  // 暂停后不再自动流转，也不会重播当前词。
+  await page.getByRole('button', { name: '暂停自动播放' }).click()
+  await expect(page.getByText('自动播放已暂停', { exact: true })).toBeVisible()
+  await page.waitForTimeout(2500)
+  await expect(progress).toHaveText('1 / 2')
+
+  await page.getByRole('button', { name: '继续自动播放' }).click()
+  // 间隔到点进入下一个词，并且自动朗读下一个词，而不是重播 apple。
+  await expect(progress).toHaveText('2 / 2')
+  await expect
+    .poll(async () => (await readSpoken(page)).map((item) => item.text))
+    .toContain('book')
 })
 
 test('a correct online answer advances without clicking 下一题', async ({ page }) => {

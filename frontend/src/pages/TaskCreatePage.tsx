@@ -67,7 +67,7 @@ export const TaskCreatePage = () => {
     repeatUntilCorrect: false,
     dictationMode: 'online' as DictationMode,
     playbackMode: 'manual' as PlaybackMode,
-    intervalSeconds: 5,
+    intervalSeconds: 8,
     repeatCount: 2,
     hint: 'phonetic' as DictationHint,
   })
@@ -198,7 +198,7 @@ export const TaskCreatePage = () => {
               dictation: {
                 mode: form.dictationMode,
                 playbackMode: form.playbackMode,
-                intervalSeconds: form.playbackMode === 'auto' ? form.intervalSeconds : 5,
+                intervalSeconds: form.playbackMode === 'auto' ? form.intervalSeconds : 8,
                 hint: form.hint,
                 repeatCount: Math.max(1, form.repeatCount),
               },

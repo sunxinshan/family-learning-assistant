@@ -5,6 +5,7 @@ import {
   Clock3,
   Headphones,
   ListChecks,
+  Pause,
   Play,
   RotateCcw,
   Volume2,
@@ -28,7 +29,7 @@ interface Feedback {
 const defaultDictationConfig: DictationConfig = {
   mode: 'online',
   playbackMode: 'manual',
-  intervalSeconds: 5,
+  intervalSeconds: 8,
   hint: 'phonetic',
   repeatCount: 1,
 }
@@ -56,10 +57,14 @@ export const DictationPracticePage = () => {
   const [busy, setBusy] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [autoPaused, setAutoPaused] = useState(false)
+  const [autoRound, setAutoRound] = useState(0)
   const [showResults, setShowResults] = useState(false)
   const startedAtRef = useRef(performance.now())
   const autoAdvanceTimer = useRef<number | null>(null)
   const answerInputRef = useRef<HTMLInputElement>(null)
+  const attemptRef = useRef<PracticeAttempt | null>(attempt)
+  attemptRef.current = attempt
   const practiceEntries = useMemo(
     () =>
       task
@@ -106,6 +111,8 @@ export const DictationPracticePage = () => {
         setShowResults(false)
         setFeedback(null)
         setAnswer('')
+        setAutoPaused(false)
+        setAutoRound(0)
         startedAtRef.current = performance.now()
       } catch (cause) {
         if (!cancelled) showToast(cause instanceof Error ? cause.message : '练习加载失败', 'danger')
@@ -151,58 +158,79 @@ export const DictationPracticePage = () => {
     [config.hint, config.repeatCount, showToast, task?.subject],
   )
 
+  const toggleAutoPause = useCallback(() => {
+    if (!autoPaused) {
+      cancelSpeech()
+      setPlaying(false)
+    }
+    setAutoPaused(!autoPaused)
+  }, [autoPaused])
+
+  // 进入词语即发音，手动模式也不用先点播放按钮。
+  // 自动模式在这里额外负责倒计时：时间到就进入下一个词，而不是重播当前词。
   useEffect(() => {
-    if (
-      !task ||
-      !attempt ||
-      isOffline ||
-      showResults ||
-      feedback ||
-      !entry ||
-      config.playbackMode !== 'auto'
-    ) {
+    if (!task || !attempt || isOffline || showResults || feedback || !entry) {
+      setCountdown(null)
+      return
+    }
+    if (autoPaused) {
       setCountdown(null)
       return
     }
     speakEntry(entry)
+    if (config.playbackMode !== 'auto') {
+      setCountdown(null)
+      return
+    }
     let remaining = Math.max(2, config.intervalSeconds)
     setCountdown(remaining)
     const timer = window.setInterval(() => {
       remaining -= 1
       if (remaining <= 0) {
-        speakEntry(entry)
-        remaining = Math.max(2, config.intervalSeconds)
+        window.clearInterval(timer)
+        if (activeIndex + 1 < practiceEntries.length) {
+          setActiveIndex(activeIndex + 1)
+        } else {
+          // 播到最后一个词后回到第一个未作答的词，避免自动播放停在结尾不动。
+          setActiveIndex(attemptRef.current?.currentIndex ?? 0)
+          setAutoRound((round) => round + 1)
+        }
+        return
       }
       setCountdown(remaining)
     }, 1000)
     return () => window.clearInterval(timer)
   }, [
+    activeIndex,
     attempt?.id,
+    autoPaused,
+    autoRound,
     config.intervalSeconds,
     config.playbackMode,
     entry?.id,
-    entry?.word,
     feedback,
     isOffline,
+    practiceEntries.length,
     showResults,
     speakEntry,
     task?.id,
   ])
 
+  // 线下听写同样进入词语即发音，自动模式下时间到进入下一个词。
   useEffect(() => {
-    if (
-      !task ||
-      !attempt ||
-      !isOffline ||
-      offlineReview ||
-      showResults ||
-      !offlineEntry ||
-      config.playbackMode !== 'auto'
-    ) {
+    if (!task || !attempt || !isOffline || offlineReview || showResults || !offlineEntry) {
+      setCountdown(null)
+      return
+    }
+    if (autoPaused) {
       setCountdown(null)
       return
     }
     speakEntry(offlineEntry)
+    if (config.playbackMode !== 'auto') {
+      setCountdown(null)
+      return
+    }
     let remaining = Math.max(2, config.intervalSeconds)
     setCountdown(remaining)
     const timer = window.setInterval(() => {
@@ -220,6 +248,7 @@ export const DictationPracticePage = () => {
     return () => window.clearInterval(timer)
   }, [
     attempt?.id,
+    autoPaused,
     config.intervalSeconds,
     config.playbackMode,
     isOffline,
@@ -455,7 +484,7 @@ export const DictationPracticePage = () => {
               {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
             </button>
             <div>
-              <h1>{playing ? '正在播放…' : '点击播放当前朗读内容'}</h1>
+              <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
               <p>播放内容不会在页面直接显示，请根据提示在纸上书写。</p>
             </div>
             <Button
@@ -484,12 +513,19 @@ export const DictationPracticePage = () => {
               </div>
             </div>
           </div>
-          {countdown !== null ? (
-            <div className="auto-play-countdown">
-              <Clock3 size={15} />
-              {offlineIndex + 1 < practiceEntries.length
-                ? `${countdown} 秒后自动播放下一个词`
-                : `${countdown} 秒后进入自查核对`}
+          {config.playbackMode === 'auto' ? (
+            <div className={`auto-play-countdown ${autoPaused ? 'is-paused' : ''}`}>
+              {autoPaused ? <Pause size={15} /> : <Clock3 size={15} />}
+              <span>
+                {autoPaused
+                  ? '自动播放已暂停'
+                  : offlineIndex + 1 < practiceEntries.length
+                    ? `${countdown ?? config.intervalSeconds} 秒后自动播放下一个词`
+                    : `${countdown ?? config.intervalSeconds} 秒后进入自查核对`}
+              </span>
+              <button type="button" className="auto-play-toggle" onClick={toggleAutoPause}>
+                {autoPaused ? '继续自动播放' : '暂停自动播放'}
+              </button>
             </div>
           ) : null}
           <footer className="practice-card-footer offline-play-footer">
@@ -604,8 +640,8 @@ export const DictationPracticePage = () => {
           </Badge>
           <span>
             {config.playbackMode === 'auto'
-              ? `自动播放 · 每 ${config.intervalSeconds} 秒重播 · 每次朗读 ${config.repeatCount} 次`
-              : `手动播放 · 每次朗读 ${config.repeatCount} 次`}
+              ? `自动播放 · 每 ${config.intervalSeconds} 秒进入下一个词 · 每次朗读 ${config.repeatCount} 次`
+              : `手动播放 · 进入词语自动朗读 ${config.repeatCount} 次`}
           </span>
         </div>
 
@@ -614,7 +650,7 @@ export const DictationPracticePage = () => {
             {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
           </button>
           <div>
-            <h1>{playing ? '正在播放…' : '点击播放当前朗读内容'}</h1>
+            <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
             <p>按任务设置朗读单词或中文含义，页面同时显示音标和中文含义</p>
           </div>
           <Button size="sm" icon={RotateCcw} onClick={() => speakEntry(entry)}>重播</Button>
@@ -639,10 +675,19 @@ export const DictationPracticePage = () => {
           </div>
         </div>
 
-        {countdown !== null ? (
-          <div className="auto-play-countdown">
-            <Clock3 size={15} />
-            {countdown} 秒后自动重播当前词语
+        {config.playbackMode === 'auto' ? (
+          <div className={`auto-play-countdown ${autoPaused ? 'is-paused' : ''}`}>
+            {autoPaused ? <Pause size={15} /> : <Clock3 size={15} />}
+            <span>
+              {autoPaused
+                ? '自动播放已暂停'
+                : activeIndex + 1 < practiceEntries.length
+                  ? `${countdown ?? config.intervalSeconds} 秒后自动播放下一个词`
+                  : `${countdown ?? config.intervalSeconds} 秒后回到第一个未作答的词`}
+            </span>
+            <button type="button" className="auto-play-toggle" onClick={toggleAutoPause}>
+              {autoPaused ? '继续自动播放' : '暂停自动播放'}
+            </button>
           </div>
         ) : null}
 
