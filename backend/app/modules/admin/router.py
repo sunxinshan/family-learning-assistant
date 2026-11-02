@@ -5,6 +5,7 @@ from app.core.database import get_session
 from app.core.security import RuntimeContext, require_admin
 from app.modules.admin.repository import OperationLogRepository
 from app.modules.admin.schemas import (
+    AdminLearningStatsOut,
     AdminUserOut,
     OperationLogOut,
     ResetPasswordOut,
@@ -25,11 +26,10 @@ def get_admin_service(
     session: Session = Depends(get_session),
 ) -> AdminService:
     settings = request.app.state.settings
-    users = UserRepository(session)
-    user_service = UserService(users, settings)
+    user_service = UserService(UserRepository(session), settings)
     practice_service = PracticeService(PracticeRepository(session), session, settings)
     learning = LearningService(practice_service, settings)
-    return AdminService(users, user_service, learning, OperationLogRepository(session), session)
+    return AdminService(user_service, learning, OperationLogRepository(session), session)
 
 
 @router.get("/users", response_model=list[AdminUserOut])
@@ -55,11 +55,20 @@ def reset_password(
     user_id: str,
     context: RuntimeContext = Depends(require_admin),
     service: AdminService = Depends(get_admin_service),
-    session: Session = Depends(get_session),
 ) -> ResetPasswordOut:
     password = service.reset_password(context.user_id, user_id)
-    user = UserRepository(session).get_by_id(user_id)
-    return ResetPasswordOut(nickname=user.nickname if user else "", temporary_password=password)
+    user = service.user_service.get_user(user_id)
+    return ResetPasswordOut(nickname=user.nickname, temporary_password=password)
+
+
+@router.get("/users/{user_id}/learning-stats", response_model=AdminLearningStatsOut)
+def get_user_learning_stats(
+    user_id: str,
+    _: RuntimeContext = Depends(require_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> AdminLearningStatsOut:
+    service.user_service.get_user(user_id)
+    return service.learning_service.stats(user_id)
 
 
 @router.get("/logs", response_model=list[OperationLogOut])

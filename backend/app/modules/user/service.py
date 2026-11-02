@@ -122,3 +122,19 @@ class UserService:
         user.password_hash = self.password_hash.hash(password)
         self.repository.delete_sessions_for_user(user.id)
         return password
+
+    def list_users(self) -> list[User]:
+        return self.repository.list_users()
+
+    def get_user(self, user_id: str) -> User:
+        user = self.repository.get_by_id(user_id)
+        if not user:
+            raise AppError("user_not_found", "用户不存在", status_code=404)
+        return user
+
+    def set_status(self, user_id: str, status: str) -> User:
+        if status not in {"active", "disabled"}:
+            raise AppError("invalid_status", "用户状态无效")
+        user = self.get_user(user_id)
+        user.status = status
+        return user

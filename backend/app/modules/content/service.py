@@ -7,8 +7,7 @@ from app.modules.content.models import ContentExtraction
 from app.modules.content.parser import parse_vocabulary
 from app.modules.content.repository import ContentRepository
 from app.modules.content.schemas import ContentExtractionUpdate
-from app.modules.material.repository import MaterialRepository
-from app.modules.vocabulary.repository import VocabularyRepository
+from app.modules.material.service import MaterialService
 from app.modules.vocabulary.schemas import VocabularyCreate, VocabularyOut
 from app.modules.vocabulary.service import VocabularyService, vocabulary_to_out
 
@@ -17,17 +16,15 @@ class ContentService:
     def __init__(
         self,
         repository: ContentRepository,
-        material_repository: MaterialRepository,
+        material_service: MaterialService,
+        vocabulary_service: VocabularyService,
     ) -> None:
         self.repository = repository
-        self.material_repository = material_repository
+        self.material_service = material_service
+        self.vocabulary_service = vocabulary_service
 
     def extract(self, material_id: str, user_id: str, role: str) -> ContentExtraction:
-        material = self.material_repository.get(material_id)
-        if not material:
-            raise AppError("material_not_found", "文件不存在", status_code=404)
-        if material.user_id != user_id and role != "admin":
-            raise AppError("forbidden", "你无权解析该文件", status_code=403)
+        material = self.material_service.get_owned(material_id, user_id, role)
         draft, errors = parse_vocabulary(Path(material.storage_key), material.original_filename)
         now = datetime.now(UTC)
         extraction = ContentExtraction(
@@ -82,8 +79,7 @@ class ContentService:
         if extraction.version != version:
             raise AppError("version_conflict", "预览版本已变化，请刷新后重试", status_code=409)
         draft = VocabularyCreate.model_validate(extraction.extracted_json)
-        service = VocabularyService(VocabularyRepository(self.repository.session))
-        library = service.create(user_id, role, draft)
+        library = self.vocabulary_service.create(user_id, role, draft)
         extraction.status = "confirmed"
         extraction.confirmed_at = datetime.now(UTC)
         extraction.updated_at = extraction.confirmed_at

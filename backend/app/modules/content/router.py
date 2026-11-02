@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from sqlalchemy.orm import Session
@@ -11,13 +11,22 @@ from app.modules.content.repository import ContentRepository
 from app.modules.content.schemas import ContentExtractionOut, ContentExtractionUpdate
 from app.modules.content.service import ContentService
 from app.modules.material.repository import MaterialRepository
+from app.modules.material.service import MaterialService
+from app.modules.vocabulary.repository import VocabularyRepository
 from app.modules.vocabulary.schemas import VocabularyOut
+from app.modules.vocabulary.service import VocabularyService
 
 router = APIRouter(tags=["content"])
 
 
-def get_content_service(session: Session = Depends(get_session)) -> ContentService:
-    return ContentService(ContentRepository(session), MaterialRepository(session))
+def get_content_service(
+    request: Request, session: Session = Depends(get_session)
+) -> ContentService:
+    return ContentService(
+        ContentRepository(session),
+        MaterialService(MaterialRepository(session), request.app.state.settings),
+        VocabularyService(VocabularyRepository(session)),
+    )
 
 
 @router.get("/vocabularies/import-template")

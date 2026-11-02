@@ -11,6 +11,7 @@ from app.modules.content.schemas import ContentExtractionUpdate
 from app.modules.content.service import ContentService
 from app.modules.learning.service import LearningService
 from app.modules.material.repository import MaterialRepository
+from app.modules.material.service import MaterialService
 from app.modules.practice.repository import PracticeRepository
 from app.modules.practice.service import PracticeService
 from app.modules.task.repository import TaskRepository
@@ -402,7 +403,11 @@ class AgentBusinessService:
                 "response": "请先上传 .xlsx 或 .csv 文件，我会解析后在对话框中展示可编辑预览。",
             }
         with self.database.session() as session:
-            content = ContentService(ContentRepository(session), MaterialRepository(session))
+            content = ContentService(
+                ContentRepository(session),
+                MaterialService(MaterialRepository(session), self.database.settings),
+                VocabularyService(VocabularyRepository(session)),
+            )
             extraction = content.extract(material_id, state["user_id"], state.get("role", "user"))
             draft = VocabularyCreate.model_validate(extraction.extracted_json).model_dump(
                 by_alias=True
@@ -490,7 +495,9 @@ class AgentBusinessService:
                 extraction_id = payload["extractionId"]
                 with self.database.session() as session:
                     ContentService(
-                        ContentRepository(session), MaterialRepository(session)
+                        ContentRepository(session),
+                        MaterialService(MaterialRepository(session), self.database.settings),
+                        VocabularyService(VocabularyRepository(session)),
                     ).get_owned(extraction_id, user_id, role)
             return
         raise AppError("unsupported_action", "暂不支持该操作", status_code=422)
@@ -559,7 +566,9 @@ class AgentBusinessService:
                 extraction_id = payload.get("extractionId")
                 if extraction_id:
                     content = ContentService(
-                        ContentRepository(session), MaterialRepository(session)
+                        ContentRepository(session),
+                        MaterialService(MaterialRepository(session), self.database.settings),
+                        VocabularyService(VocabularyRepository(session)),
                     )
                     extraction = content.get_owned(extraction_id, user_id, role)
                     extraction = content.update(

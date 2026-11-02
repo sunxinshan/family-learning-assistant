@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from app.api.schemas import CamelModel
+from app.modules.learning.schemas import LearningStatsOut
 from app.modules.user.schemas import UserPublic
 
 
@@ -27,3 +28,7 @@ class OperationLogOut(CamelModel):
 class ResetPasswordOut(CamelModel):
     nickname: str
     temporary_password: str
+
+
+class AdminLearningStatsOut(LearningStatsOut):
+    pass

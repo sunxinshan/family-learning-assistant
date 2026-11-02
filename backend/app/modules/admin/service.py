@@ -8,20 +8,17 @@ from app.modules.admin.models import OperationLog
 from app.modules.admin.repository import OperationLogRepository
 from app.modules.admin.schemas import AdminUserOut, OperationLogOut
 from app.modules.learning.service import LearningService
-from app.modules.user.repository import UserRepository
 from app.modules.user.service import UserService
 
 
 class AdminService:
     def __init__(
         self,
-        user_repository: UserRepository,
         user_service: UserService,
         learning_service: LearningService,
         log_repository: OperationLogRepository,
         session: Session,
     ) -> None:
-        self.user_repository = user_repository
         self.user_service = user_service
         self.learning_service = learning_service
         self.log_repository = log_repository
@@ -53,7 +50,7 @@ class AdminService:
 
     def list_users(self) -> list[AdminUserOut]:
         result = []
-        for user in self.user_repository.list_users():
+        for user in self.user_service.list_users():
             stats = self.learning_service.stats(user.id)
             result.append(
                 AdminUserOut(
@@ -72,10 +69,7 @@ class AdminService:
     def set_status(self, admin_id: str, user_id: str, status: str) -> AdminUserOut:
         if status not in {"active", "disabled"}:
             raise AppError("invalid_status", "用户状态无效")
-        user = self.user_repository.get_by_id(user_id)
-        if not user:
-            raise AppError("user_not_found", "用户不存在", status_code=404)
-        user.status = status
+        user = self.user_service.set_status(user_id, status)
         self.log(admin_id, "更新用户状态", "user", user.id, user.nickname, {"status": status})
         stats = self.learning_service.stats(user.id)
         return AdminUserOut(
@@ -90,9 +84,7 @@ class AdminService:
         )
 
     def reset_password(self, admin_id: str, user_id: str) -> str:
-        user = self.user_repository.get_by_id(user_id)
-        if not user:
-            raise AppError("user_not_found", "用户不存在", status_code=404)
+        user = self.user_service.get_user(user_id)
         password = self.user_service.reset_password(user)
         self.log(admin_id, "重置用户密码", "user", user.id, user.nickname)
         return password
