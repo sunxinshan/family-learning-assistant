@@ -373,3 +373,14 @@ def test_agent_creates_and_imports_vocabulary(client: TestClient) -> None:
     libraries = client.get("/api/v1/vocabularies?scope=mine", headers=auth(token)).json()
     imported = next(item for item in libraries if item["name"] == "Agent Imported Edited")
     assert len(imported["entries"]) == 2
+
+
+def test_active_run_endpoint_restores_pending_action(client: TestClient) -> None:
+    token = login(client)
+    library = create_library(client, token)
+    events = start_run(client, token, f"创建任务，选择「{library['name']}」的所有单词")
+    confirmation = find_event(events, "confirmation_required")
+    active = client.get("/api/v1/agent/runs/active", headers=auth(token))
+    assert active.status_code == 200, active.text
+    assert active.json()["id"] == confirmation["run_id"]
+    assert active.json()["pendingAction"]["operation"] == "create_task"

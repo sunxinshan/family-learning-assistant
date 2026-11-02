@@ -13,6 +13,16 @@ class AgentRepository:
     def get_run(self, run_id: str) -> AgentRun | None:
         return self.session.get(AgentRun, run_id)
 
+    def get_active_for_user(self, user_id: str) -> AgentRun | None:
+        return self.session.scalar(
+            select(AgentRun)
+            .where(
+                AgentRun.user_id == user_id,
+                AgentRun.status.in_(["running", "waiting_confirmation"]),
+            )
+            .order_by(AgentRun.created_at.desc())
+        )
+
     def get_active_for_conversation(self, conversation_id: str) -> AgentRun | None:
         return self.session.scalar(
             select(AgentRun)

@@ -34,6 +34,27 @@ def run_agent(
     )
 
 
+@router.get("/runs/active", response_model=AgentRunOut | None)
+def get_active_run(
+    request: Request,
+    context: RuntimeContext = Depends(get_runtime_context),
+) -> AgentRunOut | None:
+    with request.app.state.database.session() as session:
+        run = AgentRepository(session).get_active_for_user(context.user_id)
+        if not run:
+            return None
+        return AgentRunOut.model_validate(
+            {
+                "id": run.id,
+                "conversation_id": run.conversation_id,
+                "status": run.status,
+                "pending_action": run.pending_action_json,
+                "draft_version": run.draft_version,
+                "config_hash": run.config_hash,
+            }
+        )
+
+
 @router.get("/runs/{run_id}")
 def get_run(
     run_id: str,

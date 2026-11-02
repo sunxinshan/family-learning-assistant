@@ -202,3 +202,12 @@ def test_admin_cannot_modify_another_users_task(client: TestClient) -> None:
     ).json()
     assert client.get(f"/api/v1/tasks/{task['id']}", headers=auth(admin)).status_code == 403
     assert client.delete(f"/api/v1/tasks/{task['id']}", headers=auth(admin)).status_code == 403
+
+
+def test_admin_can_read_user_learning_stats_but_not_user_tasks(client: TestClient) -> None:
+    admin = login(client, "Admin", "admin123")
+    users = client.get("/api/v1/admin/users", headers=auth(admin)).json()
+    bob = next(item for item in users if item["nickname"] == "Bob")
+    stats = client.get(f"/api/v1/admin/users/{bob['id']}/learning-stats", headers=auth(admin))
+    assert stats.status_code == 200, stats.text
+    assert stats.json()["practiceCount"] == 0
