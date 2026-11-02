@@ -1,0 +1,20 @@
+[Unit]
+Description=Family Learning Assistant
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=project2
+Group=project2
+WorkingDirectory=/opt/project2/app-v2
+EnvironmentFile=/opt/project2/shared/env/familylearning.env
+ExecStart=/opt/project2/app-v2/deploy/project2-start.sh
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=20
+UMask=0077
+SyslogIdentifier=project2
+
+[Install]
+WantedBy=multi-user.target
