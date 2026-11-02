@@ -434,6 +434,13 @@ class AgentBusinessService:
                         "label": "列名识别",
                         "value": ("模型识别" if extraction.mapping_source == "llm" else "规则识别"),
                     },
+                    {
+                        "label": "自动补充",
+                        "value": (
+                            f"{extraction.mapping_json.get('enrichment', {}).get('completed', 0)}"
+                            " 项"
+                        ),
+                    },
                     {"label": "保存位置", "value": "我的词库"},
                 ],
                 "impact": "确认后将生成独立个人词库；原始文件不进入正式业务数据。",

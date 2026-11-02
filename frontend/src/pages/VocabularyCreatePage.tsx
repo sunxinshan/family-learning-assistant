@@ -113,8 +113,12 @@ export const VocabularyCreatePage = () => {
         .filter(([, value]) => value.index >= 0)
         .map(([field, value]) => `${field} ← ${value.header}`)
         .join('，')
+      const enrichment = result.mapping.enrichment
+      const enrichmentLabel = enrichment?.requested
+        ? `；自动补充 ${enrichment.completed}/${enrichment.requested} 项`
+        : ''
       setMappingSummary(
-        `${result.mappingSource === 'llm' ? '模型识别' : '规则识别'}：${labels}`,
+        `${result.mappingSource === 'llm' ? '模型识别' : '规则识别'}：${labels}${enrichmentLabel}`,
       )
       if (parsedEntries.length) {
         showToast(`服务端已解析 ${parsedEntries.length} 个词条`, 'success')

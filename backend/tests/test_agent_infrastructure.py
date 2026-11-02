@@ -191,3 +191,35 @@ def test_openai_adapter_analyzes_unknown_headers(settings) -> None:
     assert result["promptVersion"].startswith("v1:")
     assert "Lexeme" in captured["messages"][1]["content"]
     assert "少量样例行" in captured["messages"][0]["content"]
+
+
+def test_openai_adapter_enriches_only_requested_fields(settings) -> None:
+    settings = settings.model_copy(update={"llm_api_key": SecretStr("test-key")})
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json=_completion(
+                '{"entries":[{"index":0,"phonetic":"/ˈæpl/","meanings":["苹果"]},'
+                '{"index":1,"phonetic":"píng guǒ"}],"confidence":0.9,"reason":"dictionary"}'
+            ),
+            request=request,
+        )
+
+    adapter = OpenAICompatibleAdapter(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        backoff_seconds=0,
+    )
+    result = adapter.enrich_entries(
+        [
+            {"index": 0, "word": "apple", "needs": ["phonetic", "meaning"], "existing": {}},
+            {"index": 1, "word": "苹果", "needs": ["phonetic"], "existing": {}},
+        ]
+    )
+    assert result["entries"][0]["meanings"] == ["苹果"]
+    assert result["entries"][1]["phonetic"] == "píng guǒ"
+    assert result["promptVersion"].startswith("v1:")
+    assert "只补充 needs" in captured["messages"][0]["content"]

@@ -168,10 +168,10 @@ def _validate_mapping(mapping: object, header_count: int) -> dict[str, int]:
         if value >= 0:
             used.add(value)
         result[field] = value
-    if result["word"] < 0 or result["meaning"] < 0:
+    if result["word"] < 0:
         raise AppError(
             "invalid_headers",
-            "无法识别单词列和词义列，请检查表头或调整列名后重试",
+            "无法识别单词列，请检查表头或调整列名后重试",
             status_code=422,
         )
     return result
@@ -217,11 +217,11 @@ def parse_vocabulary(
     raw_headers = rows[0]
     mapping = _rule_mapping(raw_headers)
     mapping_info = _mapping_info(raw_headers, mapping, source="rules", confidence=1.0)
-    if mapping["word"] < 0 or mapping["meaning"] < 0:
+    if mapping["word"] < 0:
         if not header_analyzer:
             raise AppError(
                 "invalid_headers",
-                "文件必须包含单词和词义列；当前环境未配置表头分析模型",
+                "文件必须包含单词列；当前环境未配置表头分析模型",
                 status_code=422,
             )
         analyzed = header_analyzer.analyze_headers(
@@ -253,9 +253,6 @@ def parse_vocabulary(
             continue
         meaning_text = _cell(row, mapping, "meaning").replace("；", ";")
         meanings = [item.strip() for item in meaning_text.split(";") if item.strip()]
-        if not meanings:
-            errors.append({"row": row_number, "message": f"词条缺少词义：{word}"})
-            continue
         seen.add(normalized)
         entries.append(
             {

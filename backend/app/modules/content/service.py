@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.core.exceptions import AppError
 from app.core.models import new_id
+from app.modules.content.enrichment import enrich_vocabulary_entries
 from app.modules.content.models import ContentExtraction
 from app.modules.content.parser import HeaderAnalyzer, parse_vocabulary
 from app.modules.content.repository import ContentRepository
@@ -32,6 +33,12 @@ class ContentService:
             material.original_filename,
             self.header_analyzer,
         )
+        entries, enrichment_errors, enrichment = enrich_vocabulary_entries(
+            draft["entries"], self.header_analyzer
+        )
+        draft["entries"] = entries
+        errors.extend(enrichment_errors)
+        mapping["enrichment"] = enrichment
         now = datetime.now(UTC)
         extraction = ContentExtraction(
             id=new_id(),

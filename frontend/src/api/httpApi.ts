@@ -38,6 +38,14 @@ interface ContentExtraction {
     confidence: number | null
     reason: string
     usage: Record<string, number>
+    enrichment?: {
+      requested: number
+      completed: number
+      source: string | null
+      usage: Record<string, number>
+      promptVersion: string | null
+      reason: string
+    }
   }
   mappingSource: 'rules' | 'llm'
   version: number

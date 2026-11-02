@@ -109,14 +109,11 @@ test('online dictation submits answers through the real practice API', async ({ 
   await page.locator('input[type=file]').setInputFiles({
     name: `${libraryName}.csv`,
     mimeType: 'text/csv',
-    buffer: Buffer.from(
-      'Lexeme,Speak,Kind,Explain,Sample,SampleCN\n' +
-        'apple,/ˈæpl/,n.,苹果,An apple.,一个苹果。\n' +
-        'book,/bʊk/,n.,书,A book.,一本书。\n',
-    ),
+    buffer: Buffer.from('Lexeme\napple\nbook\n'),
   })
   await expect(page.getByText('服务端已解析 2 个词条')).toBeVisible()
   await expect(page.getByText(/列名映射：模型识别/)).toBeVisible()
+  await expect(page.getByText(/自动补充 2\/2 项/)).toBeVisible()
   await page.getByRole('button', { name: '创建词库' }).click()
   await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
 

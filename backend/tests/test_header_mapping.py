@@ -105,3 +105,57 @@ def test_api_uses_mock_model_for_unusual_headers(client: TestClient) -> None:
     assert body["mappingSource"] == "llm"
     assert body["mapping"]["fields"]["word"]["header"] == "Lexeme"
     assert body["extractedJson"]["entries"][0]["meanings"] == ["苹果"]
+
+
+def _login(client: TestClient) -> str:
+    response = client.post("/api/v1/auth/login", json={"nickname": "Alice", "password": "demo123"})
+    return response.json()["access_token"]
+
+
+def _extract(client: TestClient, token: str, filename: str, content: str) -> dict:
+    upload = client.post(
+        "/api/v1/materials",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": (filename, content, "text/csv")},
+    )
+    assert upload.status_code == 201, upload.text
+    response = client.post(
+        f"/api/v1/materials/{upload.json()['id']}/extractions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_word_only_english_file_auto_enriches_phonetic_and_meaning(client: TestClient) -> None:
+    token = _login(client)
+    extraction = _extract(client, token, "english.csv", "Word\napple\nbook\n")
+    entries = extraction["extractedJson"]["entries"]
+    assert entries[0]["phonetic"] == "/ˈæpl/"
+    assert entries[0]["meanings"] == ["苹果"]
+    assert entries[1]["phonetic"] == "/bʊk/"
+    assert entries[1]["meanings"] == ["书"]
+    assert extraction["mapping"]["enrichment"]["source"] == "mock"
+    assert extraction["mapping"]["enrichment"]["completed"] == 2
+    assert extraction["errorsJson"] == []
+
+
+def test_chinese_words_auto_enrich_pinyin(client: TestClient) -> None:
+    token = _login(client)
+    extraction = _extract(client, token, "chinese.csv", "词语\n苹果\n学习\n")
+    entries = extraction["extractedJson"]["entries"]
+    assert entries[0]["phonetic"] == "píng guǒ"
+    assert entries[0]["meanings"] == ["苹果"]
+    assert entries[1]["phonetic"] == "xué xí"
+    assert extraction["mapping"]["enrichment"]["completed"] == 2
+
+
+def test_unresolved_english_enrichment_is_marked_for_manual_edit(client: TestClient) -> None:
+    token = _login(client)
+    extraction = _extract(client, token, "unknown.csv", "Word\nzzzzunknown\n")
+    entry = extraction["extractedJson"]["entries"][0]
+    assert entry["phonetic"] == ""
+    assert entry["meanings"] == []
+    messages = [item["message"] for item in extraction["errorsJson"]]
+    assert any("音标" in message for message in messages)
+    assert any("中文释义" in message for message in messages)

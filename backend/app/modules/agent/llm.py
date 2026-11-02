@@ -17,6 +17,45 @@ class LLMAdapter(Protocol):
     def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]: ...
 
 
+_MOCK_WORDS = {
+    "apple": {"phonetic": "/ˈæpl/", "meanings": ["苹果"]},
+    "book": {"phonetic": "/bʊk/", "meanings": ["书"]},
+    "hello": {"phonetic": "/həˈləʊ/", "meanings": ["你好"]},
+    "world": {"phonetic": "/wɜːld/", "meanings": ["世界"]},
+    "agent": {"phonetic": "/ˈeɪdʒənt/", "meanings": ["代理；智能体"]},
+    "graph": {"phonetic": "/ɡræf/", "meanings": ["图；图表"]},
+    "orbit": {"phonetic": "/ˈɔːbɪt/", "meanings": ["轨道"]},
+    "signal": {"phonetic": "/ˈsɪɡnəl/", "meanings": ["信号"]},
+    "private": {"phonetic": "/ˈpraɪvət/", "meanings": ["私人的"]},
+    "shared": {"phonetic": "/ʃeəd/", "meanings": ["共享的"]},
+    "detail": {"phonetic": "/ˈdiːteɪl/", "meanings": ["细节"]},
+    "changed": {"phonetic": "/tʃeɪndʒd/", "meanings": ["改变了的"]},
+}
+
+_MOCK_PINYIN = {
+    "苹": "píng",
+    "果": "guǒ",
+    "书": "shū",
+    "学": "xué",
+    "习": "xí",
+    "语": "yǔ",
+    "文": "wén",
+    "你": "nǐ",
+    "好": "hǎo",
+    "世": "shì",
+    "界": "jiè",
+    "词": "cí",
+    "库": "kù",
+}
+
+
+def _mock_pinyin(word: str) -> str:
+    values = [_MOCK_PINYIN.get(character) for character in word if not character.isspace()]
+    if not values or any(value is None for value in values):
+        return ""
+    return " ".join(str(value) for value in values)
+
+
 class MockLLMAdapter:
     def classify_intent(self, text: str) -> dict[str, Any]:
         lowered = text.strip()
@@ -90,6 +129,26 @@ class MockLLMAdapter:
             "mapping": mapping,
             "confidence": 0.72,
             "reason": "Mock 词义与样例结构推断",
+            "source": "mock",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    def enrich_entries(self, entries: list[dict[str, Any]]) -> dict[str, Any]:
+        enriched = []
+        for item in entries:
+            word = str(item.get("word", "")).strip()
+            needs = set(item.get("needs", []))
+            known = _MOCK_WORDS.get(word.casefold(), {})
+            result: dict[str, Any] = {"index": item["index"]}
+            if "phonetic" in needs:
+                result["phonetic"] = known.get("phonetic") or _mock_pinyin(word)
+            if "meaning" in needs:
+                result["meanings"] = known.get("meanings", [])
+            enriched.append(result)
+        return {
+            "entries": enriched,
+            "confidence": 0.7,
+            "reason": "Mock 本地演示词表与拼音映射",
             "source": "mock",
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
@@ -192,6 +251,15 @@ class OpenAICompatibleAdapter:
                 {"headers": headers, "sampleRows": samples},
                 ensure_ascii=False,
             ),
+        )
+        result["promptVersion"] = f"{prompt.version}:{prompt.content_hash[:12]}"
+        return result
+
+    def enrich_entries(self, entries: list[dict[str, Any]]) -> dict[str, Any]:
+        prompt = PromptRegistry(Path(self.settings.prompt_dir)).get("entry_enrichment")
+        result = self._chat_json(
+            prompt.content,
+            json.dumps({"entries": entries}, ensure_ascii=False),
         )
         result["promptVersion"] = f"{prompt.version}:{prompt.content_hash[:12]}"
         return result
