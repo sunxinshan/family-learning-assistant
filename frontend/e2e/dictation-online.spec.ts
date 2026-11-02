@@ -97,6 +97,40 @@ async function openEnglishDictation(
   await expect(page.getByLabel('输入你听到的词语')).toBeVisible()
 }
 
+
+
+async function openChineseDictation(page: Page, suffix: string) {
+  const libraryName = `Chinese Dictation ${suffix}`
+  await page.goto('/vocabulary/new')
+  await page.getByLabel('学科').selectOption('chinese')
+  await page.locator('input[type=file]').setInputFiles({
+    name: `${libraryName}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from('词语\n苹果\n'),
+  })
+  await expect(page.getByText('服务端已解析 1 个词条')).toBeVisible()
+  await expect(page.getByText('píng guǒ', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '创建词库' }).click()
+  await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
+  await page.goto('/tasks/new')
+  await page.getByLabel('学科筛选').selectOption('chinese')
+  const source = page.getByLabel('内容来源')
+  const option = source.locator('option').filter({ hasText: libraryName }).first()
+  const libraryId = await option.getAttribute('value')
+  expect(libraryId).toBeTruthy()
+  await source.selectOption(libraryId!)
+  await expect(page.getByLabel('学科筛选')).toHaveValue('chinese')
+  await page.getByLabel('任务名称').fill(`Chinese Dictation Task ${suffix}`)
+  await page.getByRole('button', { name: '全选' }).click()
+  await page.locator('.advanced-settings summary').click()
+  await expect(page.getByLabel('朗读内容')).toBeDisabled()
+  await expect(page.getByLabel('朗读内容')).toContainText('词语发音（直接读出）')
+  await page.getByRole('button', { name: '创建并保存快照' }).click()
+  await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
+  await page.getByRole('link', { name: '开始学习' }).click()
+  await expect(page.getByLabel('输入你听到的词语')).toBeVisible()
+}
+
 test('English dictation reads the word itself on entering, not the IPA string', async ({
   page,
 }) => {
@@ -172,4 +206,27 @@ test('a correct online answer advances without clicking 下一题', async ({ pag
   await answer.press('Enter')
   await expect(page.getByText('拼写正确')).toBeVisible()
   await expect(page.getByText('100%正确率')).toBeVisible()
+})
+
+
+test('Chinese dictation speaks the hanzi word directly instead of reading pinyin', async ({
+  page,
+}) => {
+  const suffix = uid()
+  await stubSpeech(page)
+  await register(page, `ChineseAudio${suffix}`)
+  await openChineseDictation(page, suffix)
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __spoken: unknown[] }).__spoken.length >= 2,
+  )
+  const spoken = await readSpoken(page)
+  expect(spoken.length).toBeGreaterThanOrEqual(2)
+  for (const item of spoken) {
+    expect(item.text).toBe('苹果')
+    expect(item.lang.startsWith('zh')).toBe(true)
+    expect(item.voice).toBe('Ting-Ting')
+  }
+  expect(spoken.map((item) => item.text)).not.toContain('píng guǒ')
+  await expect(page.getByText('píng guǒ', { exact: true })).toBeVisible()
 })

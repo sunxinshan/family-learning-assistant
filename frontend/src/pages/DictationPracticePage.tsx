@@ -76,15 +76,24 @@ export const DictationPracticePage = () => {
   )
   const entry = practiceEntries[activeIndex]
   const offlineEntry = practiceEntries[offlineIndex]
-  const groupIndexFor = (target: WordEntry | undefined) =>
-    target && task && task.mode === 'long_term'
-      ? Math.floor(
-          task.snapshot.findIndex((item) => item.id === target.id) /
-            Math.max(task.config.wordsPerGroup, 1),
-        ) + 1
-      : null
-  const currentGroupIndex = groupIndexFor(entry)
-  const offlineGroupIndex = groupIndexFor(offlineEntry)
+  const groupProgressFor = (target: WordEntry | undefined) => {
+    if (!target || !task) return null
+    const snapshotIndex = task.snapshot.findIndex((item) => item.id === target.id)
+    if (snapshotIndex < 0) return null
+    const groupSize = Math.max(task.config.wordsPerGroup, 1)
+    const group = task.mode === 'fixed' ? 1 : Math.floor(snapshotIndex / groupSize) + 1
+    const groupTotal =
+      task.mode === 'fixed'
+        ? 1
+        : Math.max(Math.ceil(task.snapshot.length / groupSize), task.config.totalGroups)
+    const current = (snapshotIndex % groupSize) + 1
+    const total = Math.min(groupSize, task.snapshot.length - (group - 1) * groupSize)
+    return { group, groupTotal, current, total }
+  }
+  const currentGroupProgress = groupProgressFor(entry)
+  const offlineGroupProgress = groupProgressFor(offlineEntry)
+  const currentGroupIndex = currentGroupProgress?.group ?? null
+  const offlineGroupIndex = offlineGroupProgress?.group ?? null
   const wrongContextLabel = isWrongPractice
     ? currentGroupIndex
       ? `错题复习 · 第 ${currentGroupIndex} 组`
@@ -140,12 +149,11 @@ export const DictationPracticePage = () => {
       }
       const isChinese = task?.subject === 'chinese'
       // 英语听写要读的是单词本身；音标是一串 IPA 符号，交给语音合成只会被逐字符念成乱码。
-      const readingText =
-        config.hint === 'meaning'
+      const readingText = isChinese
+        ? target.word
+        : config.hint === 'meaning'
           ? target.meanings.join('；') || target.word
-          : isChinese
-            ? target.phonetic || target.word
-            : target.word
+          : target.word
       const lang = config.hint === 'meaning' || isChinese ? 'zh' : 'en'
       void speakText(readingText, {
         lang,
@@ -456,6 +464,7 @@ export const DictationPracticePage = () => {
         total={practiceEntries.length}
         onExit={exit}
         centered
+        groupProgress={offlineGroupProgress}
         contextLabel={
           isWrongPractice && offlineGroupIndex
             ? `错题复习 · 第 ${offlineGroupIndex} 组`
@@ -498,9 +507,9 @@ export const DictationPracticePage = () => {
           <div className="dictation-hint-card">
             <span>
               朗读内容：
-              {config.hint === 'phonetic'
-                ? task.subject === 'english' ? '英语单词' : '语文拼音'
-                : '中文含义'}
+              {task.subject === 'chinese'
+                ? '词语发音（直接读出）'
+                : config.hint === 'phonetic' ? '英语单词' : '中文含义'}
             </span>
             <div className="dictation-hint-values">
               <div>
@@ -628,6 +637,7 @@ export const DictationPracticePage = () => {
         total={attempt.total}
         onExit={exit}
         centered
+        groupProgress={currentGroupProgress}
         contextLabel={isWrongPractice ? '错题复习' : undefined}
       >
       <section className="dictation-practice-card">

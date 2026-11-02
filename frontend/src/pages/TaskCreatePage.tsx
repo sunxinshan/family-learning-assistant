@@ -486,14 +486,17 @@ export const TaskCreatePage = () => {
                     <Field label="朗读内容">
                       <SelectInput
                         value={form.hint}
+                        disabled={selectedLibrary.subject === 'chinese'}
                         onChange={(event) =>
                           setForm({ ...form, hint: event.target.value as DictationHint })
                         }
                       >
                         <option value="phonetic">
-                          {selectedLibrary.subject === 'english' ? '英语单词' : '语文拼音'}
+                          {selectedLibrary.subject === 'english' ? '英语单词' : '词语发音（直接读出）'}
                         </option>
-                        <option value="meaning">中文释义</option>
+                        {selectedLibrary.subject === 'english' ? (
+                          <option value="meaning">中文释义</option>
+                        ) : null}
                       </SelectInput>
                     </Field>
                   </div>
@@ -538,7 +541,7 @@ export const TaskCreatePage = () => {
                   <div><dt>听写方式</dt><dd>{form.dictationMode === 'online' ? '线上听写' : '线下听写'}</dd></div>
                   <div><dt>播放方式</dt><dd>{form.playbackMode === 'auto' ? `自动 · ${form.intervalSeconds} 秒` : '手动'}</dd></div>
                   <div><dt>朗读次数</dt><dd>{form.repeatCount} 次</dd></div>
-                  <div><dt>朗读内容</dt><dd>{form.hint === 'phonetic' ? (selectedLibrary.subject === 'english' ? '英语单词' : '语文拼音') : '中文释义'}</dd></div>
+                  <div><dt>朗读内容</dt><dd>{selectedLibrary.subject === 'chinese' ? '词语发音（直接读出）' : form.hint === 'phonetic' ? '英语单词' : '中文释义'}</dd></div>
                 </>
               ) : null}
               <div><dt>强制重做</dt><dd>{form.repeatUntilCorrect ? '开启' : '关闭'}</dd></div>

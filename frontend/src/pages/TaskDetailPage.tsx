@@ -571,9 +571,15 @@ export const TaskDetailPage = () => {
             </Field>
           </div>
           <Field label="朗读内容">
-            <SelectInput value={hint} onChange={(event) => setHint(event.target.value as DictationHint)}>
-              <option value="phonetic">{task.subject === 'english' ? '英语单词' : '语文拼音'}</option>
-              <option value="meaning">中文含义</option>
+            <SelectInput
+              value={hint}
+              disabled={task.subject === 'chinese'}
+              onChange={(event) => setHint(event.target.value as DictationHint)}
+            >
+              <option value="phonetic">
+                {task.subject === 'english' ? '英语单词' : '词语发音（直接读出）'}
+              </option>
+              {task.subject === 'english' ? <option value="meaning">中文含义</option> : null}
             </SelectInput>
           </Field>
           <div className="info-note">任务词条快照不可替换；其他配置可在后续练习中生效。</div>

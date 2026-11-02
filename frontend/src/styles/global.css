@@ -6206,3 +6206,59 @@ ol {
     flex-direction: column;
   }
 }
+
+.practice-group-strip {
+  display: grid;
+  grid-template-columns: auto auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 18px;
+  width: min(760px, 100%);
+  margin: 0 auto 14px;
+  padding: 10px 14px;
+  background: var(--color-bg);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.practice-group-strip > div:not(.practice-group-track) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.practice-group-strip span {
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+}
+
+.practice-group-strip strong {
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.practice-group-track {
+  height: 5px;
+  overflow: hidden;
+  background: #e7e7e7;
+  border-radius: 999px;
+}
+
+.practice-group-track > div {
+  height: 100%;
+  background: #282828;
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+@media (max-width: 720px) {
+  .practice-group-strip {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .practice-group-track {
+    grid-column: 1 / -1;
+  }
+}

@@ -337,6 +337,7 @@ export const TaskActionEditor = ({
               <Field label="朗读内容">
                 <SelectInput
                   value={draft.dictation.hint}
+                  disabled={selectedLibrary?.subject === 'chinese'}
                   onChange={(event) =>
                     update({
                       dictation: {
@@ -347,9 +348,11 @@ export const TaskActionEditor = ({
                   }
                 >
                   <option value="phonetic">
-                    {selectedLibrary?.subject === 'chinese' ? '语文拼音' : '英语单词'}
+                    {selectedLibrary?.subject === 'chinese' ? '词语发音（直接读出）' : '英语单词'}
                   </option>
-                  <option value="meaning">中文释义</option>
+                  {selectedLibrary?.subject !== 'chinese' ? (
+                    <option value="meaning">中文释义</option>
+                  ) : null}
                 </SelectInput>
               </Field>
             </div>

@@ -4,6 +4,13 @@ import { Button } from '../../components/ui'
 import type { LearningTask } from '../../types/domain'
 import { taskTypeLabel } from '../../utils/format'
 
+export interface GroupProgress {
+  group: number
+  groupTotal: number
+  current: number
+  total: number
+}
+
 export const PracticeLayout = ({
   task,
   current,
@@ -12,6 +19,7 @@ export const PracticeLayout = ({
   children,
   centered = false,
   contextLabel,
+  groupProgress,
 }: {
   task: LearningTask
   current: number
@@ -20,6 +28,7 @@ export const PracticeLayout = ({
   children: ReactNode
   centered?: boolean
   contextLabel?: string
+  groupProgress?: GroupProgress | null
 }) => {
   const progress = total > 0 ? Math.round((current / total) * 100) : 0
   return (
@@ -49,6 +58,29 @@ export const PracticeLayout = ({
         </Button>
       </header>
       <main className={`practice-main ${centered ? 'practice-centered' : ''}`}>
+        {groupProgress ? (
+          <section className="practice-group-strip" aria-label="当前分组进度">
+            <div>
+              <span>当前分组</span>
+              <strong>
+                第 {groupProgress.group} / {groupProgress.groupTotal} 组
+              </strong>
+            </div>
+            <div>
+              <span>组内进度</span>
+              <strong>
+                第 {groupProgress.current} / {groupProgress.total} 个
+              </strong>
+            </div>
+            <div className="practice-group-track">
+              <div
+                style={{
+                  width: `${Math.min(100, Math.round((groupProgress.current / Math.max(groupProgress.total, 1)) * 100))}%`,
+                }}
+              />
+            </div>
+          </section>
+        ) : null}
         {children}
       </main>
     </div>
