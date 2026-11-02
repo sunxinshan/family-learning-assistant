@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -33,11 +33,20 @@ def _engine_options(database_url: str) -> dict[str, Any]:
 
 class Database:
     def __init__(self, settings: Settings) -> None:
+        self.settings = settings
         self.engine: Engine = create_engine(
             settings.database_url,
             future=True,
             **_engine_options(settings.database_url),
         )
+        if settings.database_url.startswith("sqlite"):
+
+            @event.listens_for(self.engine, "connect")
+            def _enable_sqlite_foreign_keys(dbapi_connection, _):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
         self.session_factory = sessionmaker(
             bind=self.engine,
             autoflush=False,

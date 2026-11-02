@@ -5,10 +5,19 @@ description = "Family Learning Assistant backend"
 requires-python = ">=3.12,<3.15"
 dependencies = [
   "alembic>=1.13,<2",
+  "email-validator>=2,<3",
   "fastapi>=0.115,<1",
+  "langgraph>=1.2,<2",
+  "langgraph-checkpoint-mysql>=3,<4",
+  "langgraph-checkpoint-sqlite>=3,<4",
+  "openpyxl>=3.1,<4",
+  "pwdlib[argon2]>=0.2,<1",
   "pydantic-settings>=2.5,<3",
+  "pyjwt>=2.10,<3",
   "pymysql>=1.1,<2",
+  "python-multipart>=0.0.9,<1",
   "sqlalchemy>=2.0,<3",
+  "sse-starlette>=2,<4",
   "uvicorn[standard]>=0.30,<1",
 ]
 
@@ -39,3 +48,6 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*.py" = ["E501"]

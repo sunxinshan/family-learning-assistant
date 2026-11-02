@@ -18,9 +18,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         self.header_name = header_name
         self.logger = logging.getLogger("app.http")
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         incoming = request.headers.get(self.header_name, "")
         request_id = incoming if REQUEST_ID_PATTERN.fullmatch(incoming) else str(uuid.uuid4())
         token = request_id_var.set(request_id)

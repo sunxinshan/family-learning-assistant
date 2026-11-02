@@ -32,8 +32,7 @@ def configure_logging(level: str, output_format: str) -> None:
     else:
         handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s %(levelname)s %(name)s "
-                "request_id=%(request_id)s %(message)s"
+                "%(asctime)s %(levelname)s %(name)s request_id=%(request_id)s %(message)s"
             )
         )
         old_factory = logging.getLogRecordFactory()

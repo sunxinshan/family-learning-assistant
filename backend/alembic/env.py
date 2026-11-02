@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+import app.core.model_registry  # noqa: E402, F401
 from app.core.config import get_settings  # noqa: E402
 from app.core.database import Base  # noqa: E402
 
