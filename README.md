@@ -1,60 +1,201 @@
-# 家庭学习助手
+# 家庭学习助手（Family Learning Assistant）
 
-以 Agent 对话为核心入口的家庭学习助手，支持词库导入、听写任务、线上/线下练习、学习统计和管理员管理。
+一个基于 AI Agent 的家庭学习辅助系统。
 
-## 技术栈
+家长可以通过自然语言与 AI 助手交互，上传教材、Excel、PDF、图片等学习资料，由 AI 理解内容、整理知识、生成练习和学习任务，帮助家长更轻松地组织孩子的日常学习。
 
-- Frontend：React 19 + TypeScript + Vite + Playwright。
-- Backend：Python 3.12 + FastAPI + SQLAlchemy + Alembic + LangGraph。
-- Database：MySQL 8.4（生产验证）/ SQLite（开发测试）。
-- Agent：DeepSeek `deepseek-v4-flash`（OpenAI-compatible API）、LangGraph Interrupt/Resume、MySQL Checkpointer、SSE。
+**让家长不必研究复杂的学习工具，只需要告诉 AI：孩子要学什么。**
 
-## 快速启动
+> 项目目前处于开发阶段，正在逐步实现核心功能。
 
-```bash
-cd backend
-cp .env.example .env
-uv sync --dev
-uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+## 项目背景
 
-```bash
-cd frontend
-npm install
-npm run dev -- --host 127.0.0.1 --port 5173
-```
+目前市面上的学习工具，大多围绕固定的学习场景设计。例如：
 
-开发演示账户：
+- 词汇学习工具：需要用户手动整理和导入词汇。
+- 听写工具：需要家长提前选择听写内容。
+- 题库工具：通常需要按照固定格式录入题目。
+- 学习管理工具：需要家长手动创建任务、分配学习内容。
 
-- 普通用户：`Alice` / `demo123`
-- 普通用户：`Bob` / `demo123`
-- 管理员：`admin` / `admin213`
-- 管理员：`admin1` / `admin222`
+这些工具能够解决单一场景的问题，但家长仍然需要花费大量时间整理教材、准备学习资料和配置学习任务。
 
-## 验证
+本项目希望探索一种不同的方式：
 
-```bash
-cd backend
-uv run ruff check .
-uv run pytest
+**以 AI Agent 为统一入口，把学习资料处理、内容整理、练习生成和任务管理连接起来。**
 
-cd ../frontend
-npm run typecheck
-npm run build
-npm run test:e2e
-npm audit --audit-level=high
-```
+家长只需要上传资料并描述需求，Agent 负责理解意图、调用相应能力、组织业务流程，并在关键操作前向用户展示结果进行确认。
 
-当前记录：后端 68 passed、桌面+移动 E2E 20 passed、MySQL 8.4.7 全量通过。
+## 核心理念
 
-## 文档
+### 1. Agent 是统一入口
 
-- [开发总结](docs/开发总结.md)
-- [部署说明](docs/部署说明.md)
-- [开发进度](docs/开发进度.md)
-- [测试报告](docs/测试报告.md)
-- [技术决策记录](docs/技术决策记录.md)
-- [系统架构与开发设计文档 V1.0](docs/家庭学习助手系统架构与开发设计文档%20V1.0.md)
-- [正式开发实施计划](docs/正式开发实施计划.md)
-- [开发任务拆分清单](docs/开发任务拆分清单.md)
+用户不需要了解系统内部有哪些模块，也不需要按照固定的操作流程使用功能。
+
+例如：
+
+- 帮我把这个 Excel 整理成英语词库。
+- 提取这几页语文教材中的生词，并补充拼音。
+- 根据这份英语教材生成听写任务。
+- 把孩子最近做错的单词整理出来，再生成一组练习。
+
+Agent 理解用户意图，通过 Tool 和 Workflow 调用后端业务能力。
+
+### 2. 学习资料驱动内容生成
+
+支持从不同来源获取学习内容，逐步形成统一的内容加工流程。
+
+计划支持：
+
+- Excel / CSV
+- PDF
+- Word
+- 图片和教材扫描件
+- 文本内容
+
+例如，导入 Excel 时，不要求用户严格遵循固定模板。系统计划利用程序解析和 AI 结构识别，判断表格中的词库划分、字段含义和词条结构，并自动补充缺失信息。
+
+中文词语可以补充拼音，英文单词可以补充音标和中文释义。
+
+识别结果先交给用户预览和调整，确认后再保存。
+
+### 3. 学习内容与练习方式分离
+
+系统不将学习内容和具体练习形式绑定。
+
+例如，同一份词库未来可以用于：
+
+- 单词认读
+- 英汉互译
+- 听写
+- 选择题
+- 拼写练习
+
+通过统一的内容和题目管理能力，为后续增加更多学科和学习方式提供基础。
+
+### 4. 关键操作由用户确认
+
+Agent 可以理解需求、制定操作方案和调用工具，但不会在未经确认的情况下执行重要操作。
+
+例如：
+
+- 创建任务前，展示完整配置。
+- 修改任务前，展示变更内容。
+- 删除任务前，展示删除对象和影响，并进行二次确认。
+- 导入文件后，先展示解析结果，再由用户确认保存。
+
+AI 负责提出建议，程序负责业务校验和执行，用户拥有最终决定权。
+
+## 功能规划
+
+项目采用逐步迭代的方式开发。
+
+| 功能模块 | 主要职责 |
+|---|---|
+| AI Agent | 理解用户意图、规划工作流、调用业务工具 |
+| 学习资料 Material | 上传、管理原始学习资料 |
+| 内容加工 Content | OCR、内容提取、结构识别、内容生成 |
+| 词库 Vocabulary | 词库管理、词条管理、词汇学习 |
+| 听写 Dictation | 创建和管理听写内容 |
+| 题目 Question | 题目生成、存储和通用校验 |
+| 学习任务 Task | 创建任务、管理任务配置和进度 |
+| 练习 Practice | 练习过程、答题记录和练习恢复 |
+| 学习分析 Learning | 学习统计、错题整理和复习计划 |
+| 用户管理 User | 用户认证、个人数据隔离 |
+| 管理后台 Admin | 用户、公共词库和系统管理 |
+
+### MVP 优先实现
+
+- AI 对话与业务操作。
+- 学习资料上传和内容解析。
+- 个人词库和公共词库。
+- 词汇练习。
+- 听写任务。
+- 学习任务管理。
+- 学习记录和基础统计。
+- 管理后台基础能力。
+
+后续逐步扩展语文、英语等不同学科，以及更多练习类型。
+
+## 技术架构
+
+项目采用前后端分离架构。
+
+### 技术选型
+
+| 技术 | 用途 |
+|---|---|
+| Python | 后端开发语言 |
+| FastAPI | HTTP API 服务 |
+| LangGraph | Agent 和 Workflow 编排 |
+| React | 前端框架 |
+| TypeScript | 前端开发语言 |
+| MySQL | 生产环境业务数据库 |
+| SQLite | 本地开发阶段使用 |
+| SSE | Agent 消息和执行状态推送 |
+| LangSmith | Agent、LLM 和 Tool 调试与追踪 |
+
+### Agent 架构设计
+
+采用单一 Agent + 内部 Subgraph 的架构。
+
+主要设计原则：
+
+- LLM 负责意图理解，程序负责校验和路由。
+- 复杂业务流程使用 Subgraph 编排。
+- 动态能力通过 Tool 调用，固定流程由 Workflow Node 直接调用 Service。
+- 使用统一 Tool Registry 管理工具定义、权限和实现。
+- Tool 不直接访问数据库，业务操作统一通过 Service 完成。
+- 使用 LangGraph Checkpointer 支持 Workflow 中断和恢复。
+- 使用 LangSmith 追踪 Graph、LLM 和 Tool 执行过程。
+
+### 模块化设计
+
+后端按照业务领域划分模块，各模块拥有自己的数据和业务逻辑。
+
+核心约束：
+
+- Service 是业务逻辑和数据操作的统一入口。
+- Repository 由所属模块的 Service 调用。
+- 禁止跨模块直接访问 Repository 或数据库。
+- Agent 负责流程编排，不直接实现领域业务规则。
+- Content 负责通用内容加工，不直接保存正式业务数据。
+- Vocabulary、Dictation 等业务模块负责自己的领域规则。
+
+希望通过明确的模块边界，避免随着功能增加，系统逐渐演变成一个相互耦合的巨型应用。
+
+## 项目设计方向
+
+这个项目不仅仅是一个学习工具，也是在实践 AI Agent 在真实业务系统中的工程化落地。
+
+重点关注：
+
+- Agent 与传统业务系统的职责边界。
+- LangGraph Workflow 的组织方式。
+- Tool Registry 与权限控制。
+- Human-in-the-loop 人机协作。
+- Checkpoint 和 Workflow 恢复。
+- LLM 调用、异常处理和可靠性。
+- 多模块业务系统与 Agent 的集成。
+- AI 内容生成与传统业务校验的结合。
+
+## 项目进度
+
+项目正在持续开发中。
+
+当前以 MVP 为目标，优先完成基础架构、核心学习业务和 Agent 交互能力，再逐步扩展更多学科和学习场景。
+
+功能完成情况以仓库中的开发进度文档为准。
+
+## 参与和交流
+
+欢迎关注、Star 和提出建议。
+
+如果你也在探索 AI Agent 在实际业务系统中的应用，欢迎交流架构设计、LangGraph 实践以及 AI 学习产品的实现思路。
+
+---
+
+**Family Learning Assistant**
+
+An AI-powered learning assistant for families.
+
+Help parents organize learning materials, create learning activities, and manage children's learning through natural language and AI Agents.
