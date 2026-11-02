@@ -6,7 +6,8 @@ set -a
 source /opt/project2/shared/env/familylearning.env
 set +a
 
-RELEASE_DIR=$(cd "$(dirname "$0")" && pwd)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+RELEASE_DIR=$(cd "$SCRIPT_DIR/.." && pwd -P)
 mkdir -p /opt/project2/logs
 
 cleanup() {
