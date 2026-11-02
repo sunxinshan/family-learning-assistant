@@ -24,7 +24,6 @@ import {
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
 import type { Subject, WordEntry } from '../types/domain'
-import { downloadVocabularyTemplate, parseVocabularyFile } from '../utils/excel'
 
 const blankEntry = (): WordEntry => ({
   id: `word-${crypto.randomUUID()}`,
@@ -54,6 +53,7 @@ export const VocabularyCreatePage = () => {
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState<string[]>([])
   const [parseErrors, setParseErrors] = useState<string[]>([])
+  const [extraction, setExtraction] = useState<{ id: string; version: number } | null>(null)
   const [parsing, setParsing] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -67,10 +67,16 @@ export const VocabularyCreatePage = () => {
   const handleTemplate = async () => {
     setDownloading(true)
     try {
-      await downloadVocabularyTemplate()
+      const blob = await api.materials.downloadTemplate()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'vocabulary-template.xlsx'
+      link.click()
+      URL.revokeObjectURL(url)
       showToast('Excel 模板已下载', 'success')
-    } catch {
-      showToast('模板生成失败，请稍后重试', 'danger')
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : '模板下载失败', 'danger')
     } finally {
       setDownloading(false)
     }
@@ -84,13 +90,28 @@ export const VocabularyCreatePage = () => {
     setFileName(file.name)
     setError('')
     try {
-      const result = await parseVocabularyFile(file)
-      setEntries(result.entries)
-      setHeaders(result.headers)
-      setParseErrors(result.errors)
-      if (result.entries.length) {
-        showToast(`已解析 ${result.entries.length} 个词条`, 'success')
+      const material = await api.materials.upload(file)
+      const result = await api.content.extract(material.id)
+      const parsedEntries = result.extractedJson.entries.map((entry) => ({
+        ...entry,
+        id: `word-${crypto.randomUUID()}`,
+      }))
+      setForm({
+        subject: result.extractedJson.subject,
+        name: result.extractedJson.name,
+        description: result.extractedJson.description,
+        tags: result.extractedJson.tags,
+      })
+      setEntries(parsedEntries)
+      setHeaders(['单词', '音标', '词性', '词义', '例句', '例句翻译'])
+      setParseErrors(result.errorsJson.map((item) => item.message ?? `第 ${item.row ?? '?'} 行解析失败`))
+      setExtraction({ id: result.id, version: result.version })
+      if (parsedEntries.length) {
+        showToast(`服务端已解析 ${parsedEntries.length} 个词条`, 'success')
       }
+    } catch (cause) {
+      setEntries([])
+      setParseErrors([cause instanceof Error ? cause.message : '文件解析失败'])
     } finally {
       setParsing(false)
     }
@@ -151,14 +172,17 @@ export const VocabularyCreatePage = () => {
         subject: form.subject,
         name: form.name,
         description: form.description,
-        category: '未分类',
         tags: form.tags,
         entries,
       }
       const library =
         visibility === 'public'
           ? await api.vocabulary.createPublic(currentUser.id, draft)
-          : await api.vocabulary.create(currentUser.id, draft)
+          : extraction
+            ? await api.content
+                .update(extraction.id, extraction.version, draft)
+                .then((updated) => api.content.confirm(updated.id, updated.version))
+            : await api.vocabulary.create(currentUser.id, draft)
       refresh()
       showToast(
         visibility === 'public' ? '公共词库草稿已创建' : '个人词库已创建',

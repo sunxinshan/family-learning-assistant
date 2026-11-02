@@ -1,7 +1,6 @@
 import {
   ArrowUpRight,
   BarChart3,
-  BookOpenCheck,
   CheckCircle2,
   Headphones,
   RotateCcw,
@@ -14,10 +13,9 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { Badge, EmptyState, PageHeader, ProgressBar } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
-import type { TaskType } from '../types/domain'
 import { formatDateTime, practicePath, taskTypeLabel } from '../utils/format'
 
-type Filter = 'all' | TaskType
+type Filter = 'all' | 'dictation'
 
 export const LearningPage = () => {
   const { currentUser, practices, tasks } = useAppStore()
@@ -70,7 +68,7 @@ export const LearningPage = () => {
         description="从答题事实汇总正确率、掌握情况和待复习内容。数据随练习提交自动更新。"
         actions={
           <Link to="/tasks" className="button button-secondary button-md">
-            <BookOpenCheck size={16} />
+            <Headphones size={16} />
             查看学习任务
           </Link>
         }
@@ -147,15 +145,8 @@ export const LearningPage = () => {
               <div className="panel-header">
                 <div>
                   <h2>分项正确率</h2>
-                  <p>词汇与听写分别统计，不做强行合并的业务判断。</p>
+                  <p>正确率完全从听写答题事实计算，不进行手工修改。</p>
                 </div>
-              </div>
-              <div className="accuracy-item">
-                <div className="accuracy-label">
-                  <span><BookOpenCheck size={15} />词汇练习</span>
-                  <strong>{stats.vocabularyAccuracy}%</strong>
-                </div>
-                <ProgressBar value={stats.vocabularyAccuracy} compact />
               </div>
               <div className="accuracy-item">
                 <div className="accuracy-label">
@@ -175,7 +166,6 @@ export const LearningPage = () => {
             <div className="filter-group">
               {([
                 ['all', '全部'],
-                ['vocabulary', '词汇'],
                 ['dictation', '听写'],
               ] as const).map(([value, label]) => (
                 <button
@@ -207,7 +197,7 @@ export const LearningPage = () => {
                     return (
                       <div className="recent-practice-row" key={attempt.id}>
                         <span className={`recent-practice-icon recent-${attempt.taskType}`}>
-                          {attempt.taskType === 'vocabulary' ? <BookOpenCheck size={16} /> : <Headphones size={16} />}
+                          <Headphones size={16} />
                         </span>
                         <div className="recent-practice-main">
                           <strong>{task?.name ?? '已删除任务'}</strong>

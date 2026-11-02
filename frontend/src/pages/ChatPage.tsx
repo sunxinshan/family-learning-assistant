@@ -37,7 +37,6 @@ export const ChatPage = () => {
   const { currentUser, libraries, publicLibraries, showToast, refresh } = useAppStore()
   const navigate = useNavigate()
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [hydrated, setHydrated] = useState(false)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [busyStatus, setBusyStatus] = useState('正在理解你的需求')
@@ -51,17 +50,39 @@ export const ChatPage = () => {
 
   useEffect(() => {
     if (!currentUser) return
-    const conversation = api.conversation.get(currentUser.id)
-    setMessages(conversation.messages)
-    messagesRef.current = conversation.messages
-    setHydrated(true)
-    mountedUserIdRef.current = currentUser.id
-  }, [currentUser])
-
-  useEffect(() => {
-    if (!hydrated || !currentUser || mountedUserIdRef.current !== currentUser.id) return
-    api.conversation.save(currentUser.id, messages)
-  }, [messages, hydrated, currentUser])
+    let cancelled = false
+    const hydrate = async () => {
+      try {
+        const [conversation, active] = await Promise.all([
+          api.conversation.get(currentUser.id),
+          api.agent.getActive(),
+        ])
+        if (cancelled) return
+        const restored = [...conversation.messages]
+        if (active?.pendingAction) {
+          restored.push({
+            id: messageId(),
+            role: 'assistant',
+            kind: 'action_preview',
+            content: active.pendingAction.title,
+            createdAt: new Date().toISOString(),
+            action: active.pendingAction,
+          })
+        }
+        setMessages(restored)
+        messagesRef.current = restored
+        mountedUserIdRef.current = currentUser.id
+      } catch (cause) {
+        if (cancelled) return
+        showToast(cause instanceof Error ? cause.message : '对话加载失败', 'danger')
+        mountedUserIdRef.current = currentUser.id
+      }
+    }
+    void hydrate()
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, showToast])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -155,16 +176,33 @@ export const ChatPage = () => {
   )
 
   const runAgentRequest = useCallback(
-    async (payload: { text: string; fileName?: string; fileSize?: number; fileType?: string }) => {
+    async (payload: {
+      text: string
+      materialId?: string
+      fileName?: string
+      fileSize?: number
+      fileType?: string
+    }) => {
       if (!currentUser || busy) return
       setBusy(true)
       setBusyStatus('正在理解你的需求')
       executionMessagesRef.current.clear()
-      await api.agent.run(payload, currentUser.id, handleEvent)
-      refresh()
-      setBusy(false)
+      try {
+        await api.agent.run(payload, currentUser.id, handleEvent)
+        await refresh()
+      } catch (cause) {
+        appendMessage({
+          id: messageId(),
+          role: 'assistant',
+          kind: 'error',
+          content: cause instanceof Error ? cause.message : 'Agent 请求失败',
+          createdAt: now(),
+        })
+      } finally {
+        setBusy(false)
+      }
     },
-    [busy, currentUser, handleEvent, refresh],
+    [appendMessage, busy, currentUser, handleEvent, refresh],
   )
 
   const sendMessage = useCallback(
@@ -196,64 +234,96 @@ export const ChatPage = () => {
       createdAt: now(),
       file: { name: file.name, size: file.size, type: file.type || '表格文件' },
     })
-    await runAgentRequest({
-      text: `导入文件 ${file.name}`,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-    })
+    try {
+      const material = await api.materials.upload(file)
+      await runAgentRequest({
+        text: `导入词库「${file.name.replace(/\.[^.]+$/, '')}」`,
+        materialId: material.id,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type || '表格文件',
+      })
+    } catch (cause) {
+      appendMessage({
+        id: messageId(),
+        role: 'assistant',
+        kind: 'error',
+        content: cause instanceof Error ? cause.message : '文件上传失败',
+        createdAt: now(),
+      })
+    }
   }
 
   const handleConfirm = async (action: PendingAction) => {
     if (!currentUser || busy) return
-    const message = messagesRef.current.find(
-      (candidate) => candidate.action?.id === action.id,
-    )
-    if (message) {
-      patchMessage(message.id, (candidate) => ({
-        ...candidate,
-        action: candidate.action
-          ? { ...candidate.action, executed: true }
-          : candidate.action,
-      }))
-    }
     setBusy(true)
     setBusyStatus(action.stage === 1 ? '正在校验删除条件' : '正在执行已确认的操作')
     executionMessagesRef.current.clear()
-    await api.agent.confirm(action, currentUser.id, handleEvent)
-    refresh()
-    setBusy(false)
-  }
-
-  const handleCancel = (action: PendingAction) => {
-    const message = messagesRef.current.find(
-      (candidate) => candidate.action?.id === action.id,
-    )
-    if (message) {
-      patchMessage(message.id, (candidate) => ({
-        ...candidate,
-        action: candidate.action
-          ? { ...candidate.action, executed: true }
-          : candidate.action,
-      }))
+    try {
+      await api.agent.confirm(action, currentUser.id, handleEvent)
+      const message = messagesRef.current.find(
+        (candidate) => candidate.action?.id === action.id && !candidate.action.executed,
+      )
+      if (message) {
+        patchMessage(message.id, (candidate) => ({
+          ...candidate,
+          action: candidate.action
+            ? { ...candidate.action, executed: true }
+            : candidate.action,
+        }))
+      }
+      await refresh()
+    } catch (cause) {
+      appendMessage({
+        id: messageId(),
+        role: 'assistant',
+        kind: 'error',
+        content: cause instanceof Error ? cause.message : '操作执行失败',
+        createdAt: now(),
+      })
+    } finally {
+      setBusy(false)
     }
-    appendMessage({
-      id: messageId(),
-      role: 'assistant',
-      kind: 'text',
-      content: '已取消本次操作，没有写入任何业务数据。你仍然可以继续调整需求。',
-      createdAt: now(),
-    })
-    showToast('操作已取消', 'default')
   }
 
-  const handleClear = () => {
+  const handleCancel = async (action: PendingAction) => {
+    try {
+      if (currentUser) await api.agent.cancel(action, currentUser.id)
+      const message = messagesRef.current.find(
+        (candidate) => candidate.action?.id === action.id,
+      )
+      if (message) {
+        patchMessage(message.id, (candidate) => ({
+          ...candidate,
+          action: candidate.action
+            ? { ...candidate.action, executed: true }
+            : candidate.action,
+        }))
+      }
+      appendMessage({
+        id: messageId(),
+        role: 'assistant',
+        kind: 'text',
+        content: '已取消本次操作，没有写入任何业务数据。你仍然可以继续调整需求。',
+        createdAt: now(),
+      })
+      showToast('操作已取消', 'default')
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : '取消失败', 'danger')
+    }
+  }
+
+  const handleClear = async () => {
     if (!currentUser) return
-    api.conversation.clear(currentUser.id)
-    setMessages([])
-    messagesRef.current = []
-    setClearOpen(false)
-    showToast('当前对话已清空')
+    try {
+      await api.conversation.clear(currentUser.id)
+      setMessages([])
+      messagesRef.current = []
+      setClearOpen(false)
+      showToast('当前对话已清空')
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : '清空失败', 'danger')
+    }
   }
 
   const handleCreateTaskShortcut = () => {

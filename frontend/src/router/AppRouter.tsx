@@ -18,7 +18,6 @@ const TaskDetailPage = lazy(() => import('../pages/TaskDetailPage').then((module
 const VocabularyPage = lazy(() => import('../pages/VocabularyPage').then((module) => ({ default: module.VocabularyPage })))
 const VocabularyCreatePage = lazy(() => import('../pages/VocabularyCreatePage').then((module) => ({ default: module.VocabularyCreatePage })))
 const VocabularyDetailPage = lazy(() => import('../pages/VocabularyDetailPage').then((module) => ({ default: module.VocabularyDetailPage })))
-const VocabularyPracticePage = lazy(() => import('../pages/VocabularyPracticePage').then((module) => ({ default: module.VocabularyPracticePage })))
 const DictationPracticePage = lazy(() => import('../pages/DictationPracticePage').then((module) => ({ default: module.DictationPracticePage })))
 const LearningPage = lazy(() => import('../pages/LearningPage').then((module) => ({ default: module.LearningPage })))
 const AdminPage = lazy(() => import('../pages/AdminPage').then((module) => ({ default: module.AdminPage })))
@@ -72,7 +71,6 @@ const AppRoutes = () => (
       <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/practice/vocabulary/:taskId" element={<VocabularyPracticePage />} />
         <Route path="/practice/dictation/:taskId" element={<DictationPracticePage />} />
         <Route element={<AppShell />}>
           <Route index element={<ChatPage />} />

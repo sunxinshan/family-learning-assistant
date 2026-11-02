@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { api } from '../api'
-import { initializeStorage, resetStorage } from '../api/storage'
+import { ApiError } from '../api/httpClient'
 import type {
   LearningTask,
   PracticeAttempt,
@@ -15,7 +15,6 @@ import type {
 } from '../types/domain'
 import { AppStoreContext, type AppStoreValue, type ToastState } from './AppStoreContext'
 
-initializeStorage()
 
 export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => api.auth.current())
@@ -26,28 +25,43 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true)
   const [toast, setToast] = useState<ToastState | null>(null)
 
-  const refresh = useCallback(() => {
-    if (!currentUser) {
-      setTasks([])
-      setLibraries([])
-      setPublicLibraries([])
-      setPractices([])
+  const refresh = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      await api.refresh()
+      if (!currentUser) {
+        setTasks([])
+        setLibraries([])
+        setPublicLibraries([])
+        setPractices([])
+        return
+      }
+      setTasks(api.task.list(currentUser.id))
+      setLibraries(api.vocabulary.listMine(currentUser.id))
+      setPublicLibraries(api.vocabulary.listPublic(currentUser.id))
+      setPractices(api.learning.listAttempts(currentUser.id))
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        api.auth.logout()
+        setCurrentUser(null)
+        return
+      }
+      setToast({
+        id: Date.now(),
+        message: cause instanceof Error ? cause.message : '数据加载失败',
+        tone: 'danger',
+      })
+    } finally {
       setIsLoading(false)
-      return
     }
-    setTasks(api.task.list(currentUser.id))
-    setLibraries(api.vocabulary.listMine(currentUser.id))
-    setPublicLibraries(api.vocabulary.listPublic(currentUser.id))
-    setPractices(api.learning.listAttempts(currentUser.id))
-    setIsLoading(false)
   }, [currentUser])
 
   useEffect(() => {
-    refresh()
+    void refresh()
   }, [refresh])
 
   useEffect(() => {
-    const handleChange = () => refresh()
+    const handleChange = () => void refresh()
     window.addEventListener('fla:data-changed', handleChange)
     return () => window.removeEventListener('fla:data-changed', handleChange)
   }, [refresh])
@@ -77,12 +91,9 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(() => {
     api.auth.logout()
     setCurrentUser(null)
-  }, [])
+    void refresh()
+  }, [refresh])
 
-  const resetDemo = useCallback(() => {
-    resetStorage()
-    setCurrentUser(null)
-  }, [])
 
   const value = useMemo<AppStoreValue>(
     () => ({
@@ -96,7 +107,6 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
       login,
       register,
       logout,
-      resetDemo,
       refresh,
       showToast,
     }),
@@ -111,7 +121,6 @@ export const AppStoreProvider = ({ children }: { children: ReactNode }) => {
       login,
       register,
       logout,
-      resetDemo,
       refresh,
       showToast,
     ],

@@ -290,8 +290,7 @@ export const TaskCreatePage = () => {
                       })
                     }}
                   >
-                    <option value="dictation">听写练习（默认）</option>
-                    <option value="vocabulary">词汇练习</option>
+                    <option value="dictation">听写练习（V1 唯一正式类型）</option>
                   </SelectInput>
                 </Field>
                 <Field label="任务模式">

@@ -15,7 +15,6 @@ import type {
   PendingAction,
   Subject,
   TaskDraft,
-  TaskType,
   Vocabulary,
 } from '../../types/domain'
 import { formatEntrySelection, parseEntrySelection } from '../../utils/selection'
@@ -147,10 +146,9 @@ export const TaskActionEditor = ({
           <Field label="学习类型">
             <SelectInput
               value={draft.type}
-              onChange={(event) => update({ type: event.target.value as TaskType })}
+              onChange={() => undefined}
             >
-              <option value="dictation">听写练习</option>
-              <option value="vocabulary">词汇练习</option>
+              <option value="dictation">听写练习（V1 唯一正式类型）</option>
             </SelectInput>
           </Field>
           <Field label="任务模式">

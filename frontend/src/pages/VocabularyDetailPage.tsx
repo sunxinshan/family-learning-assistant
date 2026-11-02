@@ -62,7 +62,7 @@ export const VocabularyDetailPage = () => {
   const [batchEditOpen, setBatchEditOpen] = useState(false)
   const [batchPartOfSpeech, setBatchPartOfSpeech] = useState('')
   const [metadataOpen, setMetadataOpen] = useState(false)
-  const [metadataDraft, setMetadataDraft] = useState({ subject: 'english' as Subject, name: '', description: '', category: '', tags: [] as string[] })
+  const [metadataDraft, setMetadataDraft] = useState({ subject: 'english' as Subject, name: '', description: '', tags: [] as string[] })
   const [metadataError, setMetadataError] = useState('')
 
   const editable = Boolean(
@@ -102,7 +102,6 @@ export const VocabularyDetailPage = () => {
       subject: library.subject,
       name: library.name,
       description: library.description,
-      category: library.category,
       tags: [...library.tags],
     })
     setMetadataError('')

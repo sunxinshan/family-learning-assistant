@@ -1,3 +1,5 @@
+import { httpApi } from './httpApi'
+import { mockAgent } from './mockAgent'
 import {
   actionApi,
   adminApi,
@@ -8,15 +10,14 @@ import {
   taskApi,
   vocabularyApi,
 } from './mockApi'
-import { mockAgent } from './mockAgent'
+import { initializeStorage } from './storage'
 
-/**
- * Composition root for the frontend API boundary.
- *
- * Phase 0 uses the Mock implementation. A later HTTP adapter must implement the
- * same surface so page components do not depend on LocalStorage or Mock details.
- */
-export const api = {
+export type ApiMode = 'mock' | 'http'
+
+export const apiMode: ApiMode =
+  import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'http'
+
+const mockApi = {
   auth: authApi,
   task: taskApi,
   vocabulary: vocabularyApi,
@@ -26,9 +27,13 @@ export const api = {
   admin: adminApi,
   action: actionApi,
   agent: mockAgent,
-}
+} as unknown as typeof httpApi
 
+if (apiMode === 'mock') initializeStorage()
+
+/**
+ * Production composition root. Pages depend on this interface, never on fetch
+ * or LocalStorage. Mock mode is opt-in and isolated to local UI development.
+ */
+export const api = apiMode === 'mock' ? mockApi : httpApi
 export type ApplicationApi = typeof api
-export type ApiMode = 'mock' | 'http'
-
-export const apiMode: ApiMode = 'mock'

@@ -102,7 +102,7 @@ export const VocabularyPage = () => {
     () =>
       source.filter((library) => {
         if (subject !== 'all' && library.subject !== subject) return false
-        return `${library.name} ${library.description} ${library.category} ${library.tags.join(' ')}`
+        return `${library.name} ${library.description} ${library.category ?? ''} ${library.tags.join(' ')}`
           .toLowerCase()
           .includes(query.toLowerCase())
       }),

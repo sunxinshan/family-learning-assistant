@@ -611,7 +611,7 @@ export const mockAgent = {
             target: draft.name,
             fields: [
               { label: '词库名称', value: draft.name },
-              { label: '分类', value: draft.category },
+              { label: '分类', value: draft.category ?? '未分类' },
               { label: '词条数量', value: `${draft.entries.length} 项` },
               { label: '来源', value: 'Agent 整理' },
             ],

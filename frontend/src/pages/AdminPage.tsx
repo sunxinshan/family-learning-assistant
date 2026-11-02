@@ -11,7 +11,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import {
@@ -50,10 +50,26 @@ export const AdminPage = () => {
     () => (currentUser ? api.admin.listLogs(currentUser.id) : []),
     [currentUser, publicLibraries],
   )
-  const stats = useMemo<LearningStats | null>(() => {
-    if (!currentUser || !statsUser) return null
-    return api.admin.getUserStats(currentUser.id, statsUser.id)
-  }, [currentUser, statsUser, publicLibraries])
+  const [stats, setStats] = useState<LearningStats | null>(null)
+
+  useEffect(() => {
+    if (!currentUser || !statsUser) {
+      setStats(null)
+      return
+    }
+    let cancelled = false
+    void api.admin
+      .getUserStats(currentUser.id, statsUser.id)
+      .then((value) => {
+        if (!cancelled) setStats(value)
+      })
+      .catch((cause) => {
+        if (!cancelled) showToast(cause instanceof Error ? cause.message : '统计加载失败', 'danger')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, statsUser, showToast])
 
   if (!currentUser || currentUser.role !== 'admin') return null
 

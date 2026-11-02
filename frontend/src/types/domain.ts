@@ -17,7 +17,7 @@ export interface User {
   status: UserStatus
   createdAt: string
   lastActiveAt: string
-  demoPassword: string
+  demoPassword?: string
 }
 
 export interface WordEntry {
@@ -36,7 +36,7 @@ export interface Vocabulary {
   subject: Subject
   name: string
   description: string
-  category: string
+  category?: string
   tags: string[]
   visibility: LibraryVisibility
   published: boolean
@@ -88,6 +88,7 @@ export interface AnswerRecord {
   correct: boolean
   answeredAt: string
   durationMs: number
+  evaluationSource?: 'auto' | 'self_report'
 }
 
 export interface PracticeAttempt {
@@ -143,7 +144,7 @@ export interface VocabularyDraft {
   subject: Subject
   name: string
   description: string
-  category: string
+  category?: string
   tags: string[]
   entries: WordEntry[]
 }
@@ -187,6 +188,8 @@ export interface PendingAction {
   danger?: boolean
   stage?: 1 | 2
   executed?: boolean
+  draftVersion?: number
+  configHash?: string
   payload: PendingActionPayload
 }
 

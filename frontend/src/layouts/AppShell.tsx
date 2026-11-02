@@ -7,7 +7,6 @@ import {
   LogOut,
   Menu,
   MessageSquare,
-  RotateCcw,
   ShieldCheck,
   Sparkles,
   X,
@@ -15,7 +14,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../stores/AppStoreContext'
-import { Button, IconButton, Modal } from '../components/ui'
+import { IconButton } from '../components/ui'
 
 const baseNav = [
   { to: '/', label: '学习助手', icon: MessageSquare, end: true },
@@ -38,12 +37,11 @@ const titleForPath = (pathname: string): string => {
 }
 
 export const AppShell = () => {
-  const { currentUser, logout, resetDemo } = useAppStore()
+  const { currentUser, logout } = useAppStore()
   const navigate = useNavigate()
   const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
-  const [resetOpen, setResetOpen] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
 
   const nav = currentUser?.role === 'admin'
@@ -70,11 +68,7 @@ export const AppShell = () => {
     navigate('/login', { replace: true })
   }
 
-  const handleReset = () => {
-    resetDemo()
-    setResetOpen(false)
-    navigate('/login', { replace: true })
-  }
+
 
   const sidebar = (
     <>
@@ -120,8 +114,8 @@ export const AppShell = () => {
           <Sparkles size={14} />
         </div>
         <div>
-          <strong>Phase 0 原型</strong>
-          <span>数据保存在当前浏览器</span>
+          <strong>正式服务</strong>
+          <span>数据由后端实时同步</span>
         </div>
       </div>
 
@@ -138,10 +132,6 @@ export const AppShell = () => {
             <button type="button" onClick={handleLogout}>
               <LogOut size={15} />
               退出登录
-            </button>
-            <button type="button" onClick={() => setResetOpen(true)}>
-              <RotateCcw size={15} />
-              重置演示数据
             </button>
           </div>
         ) : null}
@@ -189,30 +179,6 @@ export const AppShell = () => {
         <Outlet />
       </div>
 
-      <Modal
-        open={resetOpen}
-        title="重置演示数据"
-        description="所有对话、任务、词库和练习记录都会被恢复为初始状态。"
-        width="sm"
-        danger
-        onClose={() => setResetOpen(false)}
-        footer={
-          <>
-            <Button onClick={() => setResetOpen(false)}>取消</Button>
-            <Button variant="danger" onClick={handleReset}>
-              确认重置
-            </Button>
-          </>
-        }
-      >
-        <div className="reset-warning">
-          <RotateCcw size={20} />
-          <div>
-            <strong>当前修改不会保留</strong>
-            <p>这是原型开发工具，不会影响任何真实账户或服务端数据。</p>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }

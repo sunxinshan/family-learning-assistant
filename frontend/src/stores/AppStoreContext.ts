@@ -23,8 +23,7 @@ export interface AppStoreValue {
   login: (nickname: string, password: string) => Promise<User>
   register: (nickname: string, password: string) => Promise<User>
   logout: () => void
-  resetDemo: () => void
-  refresh: () => void
+  refresh: () => Promise<void>
   showToast: (message: string, tone?: ToastState['tone']) => void
 }
 

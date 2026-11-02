@@ -56,14 +56,26 @@ export const VocabularyPracticePage = () => {
       setAttempt(null)
       return
     }
-    const nextAttempt = api.practice.startOrResume(taskId, currentUser.id)
-    setAttempt(nextAttempt)
-    setActiveIndex(nextAttempt.currentIndex)
-    setShowResults(false)
-    setFeedback(null)
-    setSelected('')
-    startedAtRef.current = performance.now()
-  }, [taskId, currentUser, taskExists])
+    let cancelled = false
+    const start = async () => {
+      try {
+        const nextAttempt = await api.practice.startOrResume(taskId, currentUser.id)
+        if (cancelled) return
+        setAttempt(nextAttempt)
+        setActiveIndex(nextAttempt.currentIndex)
+        setShowResults(false)
+        setFeedback(null)
+        setSelected('')
+        startedAtRef.current = performance.now()
+      } catch (cause) {
+        if (!cancelled) showToast(cause instanceof Error ? cause.message : '练习加载失败', 'danger')
+      }
+    }
+    void start()
+    return () => {
+      cancelled = true
+    }
+  }, [taskId, currentUser, taskExists, showToast])
 
   const entry = task?.snapshot[activeIndex]
   const options = useMemo(

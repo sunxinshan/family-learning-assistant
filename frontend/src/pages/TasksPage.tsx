@@ -92,7 +92,6 @@ export const TasksPage = () => {
               onChange={(event) => setType(event.target.value as TypeFilter)}
             >
               <option value="all">全部类型</option>
-              <option value="vocabulary">词汇练习</option>
               <option value="dictation">听写练习</option>
             </select>
           </div>
