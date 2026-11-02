@@ -2,17 +2,100 @@ import csv
 import io
 import unicodedata
 from pathlib import Path
+from typing import Any, Protocol
 
 from openpyxl import load_workbook
 
 from app.core.exceptions import AppError
 
-WORD_HEADERS = {"word", "单词", "词形", "词汇"}
-PHONETIC_HEADERS = {"phonetic", "音标", "拼音"}
-POS_HEADERS = {"partofspeech", "part_of_speech", "词性"}
-MEANING_HEADERS = {"meaning", "meanings", "词义", "释义", "中文释义"}
-EXAMPLE_HEADERS = {"example", "例句", "英文例句"}
-TRANSLATION_HEADERS = {"exampletranslation", "example_translation", "例句翻译", "翻译"}
+WORD_HEADERS = {
+    "word",
+    "words",
+    "单词",
+    "词形",
+    "词汇",
+    "词语",
+    "英文单词",
+    "englishword",
+    "english_word",
+    "term",
+    "vocabulary",
+}
+PHONETIC_HEADERS = {
+    "phonetic",
+    "phonetics",
+    "ipa",
+    "音标",
+    "拼音",
+    "读音",
+    "pronunciation",
+}
+POS_HEADERS = {
+    "partofspeech",
+    "part_of_speech",
+    "pos",
+    "词性",
+    "词类",
+    "part",
+    "type",
+}
+MEANING_HEADERS = {
+    "meaning",
+    "meanings",
+    "definition",
+    "translation",
+    "gloss",
+    "词义",
+    "释义",
+    "中文释义",
+    "中文意思",
+    "意思",
+    "解释",
+    "含义",
+    "翻译",
+}
+EXAMPLE_HEADERS = {
+    "example",
+    "examples",
+    "sentence",
+    "sample",
+    "例句",
+    "英文例句",
+    "示例",
+    "句子",
+}
+TRANSLATION_HEADERS = {
+    "exampletranslation",
+    "example_translation",
+    "sentencetranslation",
+    "sentence_translation",
+    "example_cn",
+    "例句翻译",
+    "翻译",
+    "例句中文",
+    "句子翻译",
+}
+
+CANONICAL_FIELDS = (
+    "word",
+    "phonetic",
+    "pos",
+    "meaning",
+    "example",
+    "translation",
+)
+HEADER_SETS = {
+    "word": WORD_HEADERS,
+    "phonetic": PHONETIC_HEADERS,
+    "pos": POS_HEADERS,
+    "meaning": MEANING_HEADERS,
+    "example": EXAMPLE_HEADERS,
+    "translation": TRANSLATION_HEADERS,
+}
+
+
+class HeaderAnalyzer(Protocol):
+    def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]: ...
 
 
 def normalize_header(value: object) -> str:
@@ -25,7 +108,7 @@ def normalize_word(value: str) -> str:
     return unicodedata.normalize("NFKC", value).strip().casefold()
 
 
-def _read_rows(path: Path) -> list[list[object]]:
+def read_vocabulary_rows(path: Path) -> list[list[object]]:
     if path.suffix.lower() == ".csv":
         text = path.read_text(encoding="utf-8-sig")
         return list(csv.reader(io.StringIO(text)))
@@ -41,29 +124,125 @@ def _cell(row: list[object], indexes: dict[str, int], key: str) -> str:
     return "" if index < 0 or index >= len(row) else str(row[index] or "").strip()
 
 
-def parse_vocabulary(path: Path, filename: str) -> tuple[dict, list[dict]]:
-    rows = _read_rows(path)
+def _rule_mapping(raw_headers: list[object]) -> dict[str, int]:
+    normalized = [normalize_header(item) for item in raw_headers]
+    mapping: dict[str, int] = {}
+    used: set[int] = set()
+    for field in CANONICAL_FIELDS:
+        index = next(
+            (
+                i
+                for i, header in enumerate(normalized)
+                if i not in used and header in HEADER_SETS[field]
+            ),
+            -1,
+        )
+        mapping[field] = index
+        if index >= 0:
+            used.add(index)
+    return mapping
+
+
+def _sample_rows(rows: list[list[object]], limit: int = 5) -> list[list[str]]:
+    samples: list[list[str]] = []
+    for row in rows[1 : limit + 1]:
+        samples.append([str(item or "")[:200] for item in row[:30]])
+    return samples
+
+
+def _validate_mapping(mapping: object, header_count: int) -> dict[str, int]:
+    if not isinstance(mapping, dict):
+        raise AppError("header_mapping_failed", "模型未返回有效列映射", status_code=422)
+    result: dict[str, int] = {}
+    used: set[int] = set()
+    for field in CANONICAL_FIELDS:
+        value = mapping.get(field, -1)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise AppError("header_mapping_failed", "模型列映射索引格式错误", status_code=422)
+        if value < -1 or value >= header_count:
+            raise AppError("header_mapping_failed", "模型列映射索引越界", status_code=422)
+        if value >= 0 and value in used:
+            raise AppError(
+                "header_mapping_failed", "模型重复使用同一列映射多个字段", status_code=422
+            )
+        if value >= 0:
+            used.add(value)
+        result[field] = value
+    if result["word"] < 0 or result["meaning"] < 0:
+        raise AppError(
+            "invalid_headers",
+            "无法识别单词列和词义列，请检查表头或调整列名后重试",
+            status_code=422,
+        )
+    return result
+
+
+def _mapping_info(
+    raw_headers: list[object],
+    mapping: dict[str, int],
+    *,
+    source: str,
+    confidence: float | None = None,
+    reason: str = "",
+    usage: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    return {
+        "fields": {
+            field: {
+                "index": index,
+                "header": str(raw_headers[index] or "") if index >= 0 else "",
+            }
+            for field, index in mapping.items()
+        },
+        "unmappedHeaders": [
+            str(header or "")
+            for index, header in enumerate(raw_headers)
+            if index not in {value for value in mapping.values() if value >= 0}
+        ],
+        "source": source,
+        "confidence": confidence,
+        "reason": reason,
+        "usage": usage or {},
+    }
+
+
+def parse_vocabulary(
+    path: Path,
+    filename: str,
+    header_analyzer: HeaderAnalyzer | None = None,
+) -> tuple[dict, list[dict], dict[str, Any]]:
+    rows = read_vocabulary_rows(path)
     if not rows:
         raise AppError("empty_file", "文件内容为空")
-    headers = [normalize_header(item) for item in rows[0]]
-    indexes = {
-        "word": next((i for i, header in enumerate(headers) if header in WORD_HEADERS), -1),
-        "phonetic": next((i for i, header in enumerate(headers) if header in PHONETIC_HEADERS), -1),
-        "pos": next((i for i, header in enumerate(headers) if header in POS_HEADERS), -1),
-        "meaning": next((i for i, header in enumerate(headers) if header in MEANING_HEADERS), -1),
-        "example": next((i for i, header in enumerate(headers) if header in EXAMPLE_HEADERS), -1),
-        "translation": next(
-            (i for i, header in enumerate(headers) if header in TRANSLATION_HEADERS), -1
-        ),
-    }
-    if indexes["word"] < 0 or indexes["meaning"] < 0:
-        raise AppError("invalid_headers", "文件必须包含单词和词义列")
+    raw_headers = rows[0]
+    mapping = _rule_mapping(raw_headers)
+    mapping_info = _mapping_info(raw_headers, mapping, source="rules", confidence=1.0)
+    if mapping["word"] < 0 or mapping["meaning"] < 0:
+        if not header_analyzer:
+            raise AppError(
+                "invalid_headers",
+                "文件必须包含单词和词义列；当前环境未配置表头分析模型",
+                status_code=422,
+            )
+        analyzed = header_analyzer.analyze_headers(
+            [str(item or "") for item in raw_headers],
+            _sample_rows(rows),
+        )
+        mapping = _validate_mapping(analyzed.get("mapping"), len(raw_headers))
+        mapping_info = _mapping_info(
+            raw_headers,
+            mapping,
+            source="llm",
+            confidence=float(analyzed.get("confidence", 0.0) or 0.0),
+            reason=str(analyzed.get("reason", ""))[:500],
+            usage=analyzed.get("usage") or {},
+        )
 
     entries: list[dict] = []
     errors: list[dict] = []
     seen: set[str] = set()
     for row_number, row in enumerate(rows[1:], start=2):
-        word = _cell(row, indexes, "word")
+        word = _cell(row, mapping, "word")
         if not word:
             if any(str(item or "").strip() for item in row):
                 errors.append({"row": row_number, "message": "缺少单词"})
@@ -72,7 +251,7 @@ def parse_vocabulary(path: Path, filename: str) -> tuple[dict, list[dict]]:
         if normalized in seen:
             errors.append({"row": row_number, "message": f"重复词条：{word}"})
             continue
-        meaning_text = _cell(row, indexes, "meaning").replace("；", ";")
+        meaning_text = _cell(row, mapping, "meaning").replace("；", ";")
         meanings = [item.strip() for item in meaning_text.split(";") if item.strip()]
         if not meanings:
             errors.append({"row": row_number, "message": f"词条缺少词义：{word}"})
@@ -81,11 +260,11 @@ def parse_vocabulary(path: Path, filename: str) -> tuple[dict, list[dict]]:
         entries.append(
             {
                 "word": word,
-                "phonetic": _cell(row, indexes, "phonetic"),
-                "partOfSpeech": _cell(row, indexes, "pos"),
+                "phonetic": _cell(row, mapping, "phonetic"),
+                "partOfSpeech": _cell(row, mapping, "pos"),
                 "meanings": meanings,
-                "example": _cell(row, indexes, "example"),
-                "exampleTranslation": _cell(row, indexes, "translation"),
+                "example": _cell(row, mapping, "example"),
+                "exampleTranslation": _cell(row, mapping, "translation"),
             }
         )
     draft = {
@@ -95,4 +274,4 @@ def parse_vocabulary(path: Path, filename: str) -> tuple[dict, list[dict]]:
         "tags": ["Excel 导入"],
         "entries": entries,
     }
-    return draft, errors
+    return draft, errors, mapping_info

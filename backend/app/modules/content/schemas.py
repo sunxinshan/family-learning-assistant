@@ -12,6 +12,8 @@ class ContentExtractionOut(CamelModel):
     status: str
     extracted_json: dict[str, Any]
     errors_json: list[Any]
+    mapping: dict[str, Any]
+    mapping_source: str
     version: int
     confirmed_at: datetime | None
     created_at: datetime

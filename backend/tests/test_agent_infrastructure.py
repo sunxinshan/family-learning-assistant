@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -159,3 +161,33 @@ def test_execution_details_are_redacted_and_admin_visible(client: TestClient) ->
     assert (
         client.get(f"/api/v1/agent/runs/{run_id}/details", headers=auth(admin)).status_code == 200
     )
+
+
+def test_openai_adapter_analyzes_unknown_headers(settings) -> None:
+    settings = settings.model_copy(update={"llm_api_key": SecretStr("test-key")})
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json=_completion(
+                '{"mapping":{"word":0,"phonetic":-1,"partOfSpeech":-1,'
+                '"meaning":1,"example":-1,"exampleTranslation":-1},'
+                '"confidence":0.93,"reason":"header semantics"}'
+            ),
+            request=request,
+        )
+
+    adapter = OpenAICompatibleAdapter(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        backoff_seconds=0,
+    )
+    result = adapter.analyze_headers(["Lexeme", "Explain"], [["apple", "苹果"]])
+    assert result["mapping"]["word"] == 0
+    assert result["mapping"]["meaning"] == 1
+    assert result["confidence"] == 0.93
+    assert result["promptVersion"].startswith("v1:")
+    assert "Lexeme" in captured["messages"][1]["content"]
+    assert "少量样例行" in captured["messages"][0]["content"]

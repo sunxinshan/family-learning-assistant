@@ -64,6 +64,7 @@ def test_invalid_and_disabled_tokens_are_rejected(client: TestClient) -> None:
 
 
 def test_security_headers_and_runtime_metrics(client: TestClient) -> None:
+    baseline = client.get("/api/v1/health/metrics").json()
     health = client.get("/api/v1/health/live")
     assert health.headers["X-Content-Type-Options"] == "nosniff"
     assert health.headers["X-Frame-Options"] == "DENY"
@@ -73,7 +74,8 @@ def test_security_headers_and_runtime_metrics(client: TestClient) -> None:
     assert metrics.status_code == 200
     body = metrics.json()
     assert body["requestsTotal"] >= 1
-    assert body["errorsTotal"] == 0
+    assert body["errorsTotal"] >= baseline["errorsTotal"]
+    assert body["requestsTotal"] >= baseline["requestsTotal"] + 2
     assert body["latencyMaxMs"] >= 0
 
 

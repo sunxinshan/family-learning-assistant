@@ -31,6 +31,15 @@ interface ContentExtraction {
   materialId: string
   extractedJson: VocabularyDraft
   errorsJson: Array<{ row?: number; message?: string }>
+  mapping: {
+    fields: Record<string, { index: number; header: string }>
+    unmappedHeaders: string[]
+    source: 'rules' | 'llm'
+    confidence: number | null
+    reason: string
+    usage: Record<string, number>
+  }
+  mappingSource: 'rules' | 'llm'
   version: number
   status: string
 }

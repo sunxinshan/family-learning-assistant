@@ -19,5 +19,11 @@ class ContentExtraction(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="previewed", nullable=False)
     extracted_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     errors_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    mapping_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    mapping_source: Mapped[str] = mapped_column(String(20), default="rules", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    @property
+    def mapping(self) -> dict:
+        return self.mapping_json

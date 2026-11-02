@@ -1,15 +1,20 @@
 import json
 import time
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
+from app.modules.agent.prompt_registry import PromptRegistry
+from app.modules.content.parser import CANONICAL_FIELDS, _rule_mapping, normalize_header
 
 
 class LLMAdapter(Protocol):
     def classify_intent(self, text: str) -> dict[str, Any]: ...
+
+    def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]: ...
 
 
 class MockLLMAdapter:
@@ -39,6 +44,56 @@ class MockLLMAdapter:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
+    def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]:
+        mapping = _rule_mapping(headers)
+        used = {value for value in mapping.values() if value >= 0}
+        keywords = {
+            "word": ("word", "term", "vocab", "lexeme", "单词", "词语", "词汇"),
+            "phonetic": ("phon", "ipa", "pronoun", "音标", "拼音", "读音"),
+            "pos": ("partofspeech", "part_of_speech", "词性", "词类", "pos"),
+            "meaning": (
+                "mean",
+                "defin",
+                "gloss",
+                "explain",
+                "释义",
+                "词义",
+                "含义",
+                "意思",
+                "解释",
+            ),
+            "example": ("example", "sentence", "例句", "句子"),
+            "translation": (
+                "translation",
+                "translate",
+                "翻译",
+                "例句中文",
+                "句子翻译",
+            ),
+        }
+        normalized = [normalize_header(header) for header in headers]
+        for field in CANONICAL_FIELDS:
+            if mapping[field] >= 0:
+                continue
+            index = next(
+                (
+                    i
+                    for i, header in enumerate(normalized)
+                    if i not in used and any(token in header for token in keywords[field])
+                ),
+                -1,
+            )
+            mapping[field] = index
+            if index >= 0:
+                used.add(index)
+        return {
+            "mapping": mapping,
+            "confidence": 0.72,
+            "reason": "Mock 词义与样例结构推断",
+            "source": "mock",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
 
 class OpenAICompatibleAdapter:
     def __init__(
@@ -54,7 +109,7 @@ class OpenAICompatibleAdapter:
         self.backoff_seconds = backoff_seconds
         self.max_attempts = max_attempts
 
-    def classify_intent(self, text: str) -> dict[str, Any]:
+    def _chat_json(self, system: str, user: str) -> dict[str, Any]:
         if not self.settings.llm_api_key:
             raise AppError("llm_not_configured", "LLM 服务尚未配置", status_code=503)
         last_error: Exception | None = None
@@ -70,16 +125,8 @@ class OpenAICompatibleAdapter:
                         "temperature": 0,
                         "response_format": {"type": "json_object"},
                         "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Classify the user's route as one of: task_create, "
-                                    "task_update, task_delete, vocabulary_create, "
-                                    "vocabulary_import, learning, chat, unclear. "
-                                    "Return JSON with route. Never include credentials."
-                                ),
-                            },
-                            {"role": "user", "content": text},
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
                         ],
                     },
                 )
@@ -126,6 +173,28 @@ class OpenAICompatibleAdapter:
                     "llm_invalid_response", "LLM 返回结果无法解析", status_code=502
                 ) from exc
         raise AppError("llm_unavailable", "LLM 服务暂时不可用", status_code=503) from last_error
+
+    def classify_intent(self, text: str) -> dict[str, Any]:
+        return self._chat_json(
+            (
+                "Classify the user's route as one of: task_create, task_update, "
+                "task_delete, vocabulary_create, vocabulary_import, learning, chat, "
+                "unclear. Return JSON with route. Never include credentials."
+            ),
+            text,
+        )
+
+    def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]:
+        prompt = PromptRegistry(Path(self.settings.prompt_dir)).get("header_mapping")
+        result = self._chat_json(
+            prompt.content,
+            json.dumps(
+                {"headers": headers, "sampleRows": samples},
+                ensure_ascii=False,
+            ),
+        )
+        result["promptVersion"] = f"{prompt.version}:{prompt.content_hash[:12]}"
+        return result
 
 
 def create_llm_adapter(settings: Settings) -> LLMAdapter:

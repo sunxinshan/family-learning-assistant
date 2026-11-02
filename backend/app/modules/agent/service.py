@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 
 from app.core.database import Database
 from app.core.exceptions import AppError
+from app.modules.agent.llm import create_llm_adapter
 from app.modules.content.repository import ContentRepository
 from app.modules.content.schemas import ContentExtractionUpdate
 from app.modules.content.service import ContentService
@@ -411,6 +412,7 @@ class AgentBusinessService:
                 ContentRepository(session),
                 MaterialService(MaterialRepository(session), self.database.settings),
                 VocabularyService(VocabularyRepository(session)),
+                create_llm_adapter(self.database.settings),
             )
             extraction = content.extract(material_id, state["user_id"], state.get("role", "user"))
             draft = VocabularyCreate.model_validate(extraction.extracted_json).model_dump(
@@ -428,6 +430,10 @@ class AgentBusinessService:
                 "fields": [
                     {"label": "解析词条", "value": f"{len(draft['entries'])} 项"},
                     {"label": "解析错误", "value": f"{len(extraction.errors_json)} 项"},
+                    {
+                        "label": "列名识别",
+                        "value": ("模型识别" if extraction.mapping_source == "llm" else "规则识别"),
+                    },
                     {"label": "保存位置", "value": "我的词库"},
                 ],
                 "impact": "确认后将生成独立个人词库；原始文件不进入正式业务数据。",
@@ -502,6 +508,7 @@ class AgentBusinessService:
                         ContentRepository(session),
                         MaterialService(MaterialRepository(session), self.database.settings),
                         VocabularyService(VocabularyRepository(session)),
+                        create_llm_adapter(self.database.settings),
                     ).get_owned(extraction_id, user_id, role)
             return
         raise AppError("unsupported_action", "暂不支持该操作", status_code=422)
@@ -573,6 +580,7 @@ class AgentBusinessService:
                         ContentRepository(session),
                         MaterialService(MaterialRepository(session), self.database.settings),
                         VocabularyService(VocabularyRepository(session)),
+                        create_llm_adapter(self.database.settings),
                     )
                     extraction = content.get_owned(extraction_id, user_id, role)
                     extraction = content.update(

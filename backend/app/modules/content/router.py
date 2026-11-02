@@ -26,6 +26,7 @@ def get_content_service(
         ContentRepository(session),
         MaterialService(MaterialRepository(session), request.app.state.settings),
         VocabularyService(VocabularyRepository(session)),
+        request.app.state.agent_runtime.llm,
     )
 
 

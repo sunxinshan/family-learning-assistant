@@ -4,7 +4,7 @@ from pathlib import Path
 from app.core.exceptions import AppError
 from app.core.models import new_id
 from app.modules.content.models import ContentExtraction
-from app.modules.content.parser import parse_vocabulary
+from app.modules.content.parser import HeaderAnalyzer, parse_vocabulary
 from app.modules.content.repository import ContentRepository
 from app.modules.content.schemas import ContentExtractionUpdate
 from app.modules.material.service import MaterialService
@@ -18,14 +18,20 @@ class ContentService:
         repository: ContentRepository,
         material_service: MaterialService,
         vocabulary_service: VocabularyService,
+        header_analyzer: HeaderAnalyzer | None = None,
     ) -> None:
         self.repository = repository
         self.material_service = material_service
         self.vocabulary_service = vocabulary_service
+        self.header_analyzer = header_analyzer
 
     def extract(self, material_id: str, user_id: str, role: str) -> ContentExtraction:
         material = self.material_service.get_owned(material_id, user_id, role)
-        draft, errors = parse_vocabulary(Path(material.storage_key), material.original_filename)
+        draft, errors, mapping = parse_vocabulary(
+            Path(material.storage_key),
+            material.original_filename,
+            self.header_analyzer,
+        )
         now = datetime.now(UTC)
         extraction = ContentExtraction(
             id=new_id(),
@@ -36,6 +42,8 @@ class ContentService:
             status="previewed",
             extracted_json=draft,
             errors_json=errors,
+            mapping_json=mapping,
+            mapping_source=str(mapping.get("source", "rules")),
             version=1,
             created_at=now,
             updated_at=now,

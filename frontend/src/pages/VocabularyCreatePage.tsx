@@ -54,6 +54,7 @@ export const VocabularyCreatePage = () => {
   const [headers, setHeaders] = useState<string[]>([])
   const [parseErrors, setParseErrors] = useState<string[]>([])
   const [extraction, setExtraction] = useState<{ id: string; version: number } | null>(null)
+  const [mappingSummary, setMappingSummary] = useState('')
   const [parsing, setParsing] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -89,6 +90,8 @@ export const VocabularyCreatePage = () => {
     setParsing(true)
     setFileName(file.name)
     setError('')
+    setExtraction(null)
+    setMappingSummary('')
     try {
       const material = await api.materials.upload(file)
       const result = await api.content.extract(material.id)
@@ -106,6 +109,13 @@ export const VocabularyCreatePage = () => {
       setHeaders(['单词', '音标', '词性', '词义', '例句', '例句翻译'])
       setParseErrors(result.errorsJson.map((item) => item.message ?? `第 ${item.row ?? '?'} 行解析失败`))
       setExtraction({ id: result.id, version: result.version })
+      const labels = Object.entries(result.mapping.fields)
+        .filter(([, value]) => value.index >= 0)
+        .map(([field, value]) => `${field} ← ${value.header}`)
+        .join('，')
+      setMappingSummary(
+        `${result.mappingSource === 'llm' ? '模型识别' : '规则识别'}：${labels}`,
+      )
       if (parsedEntries.length) {
         showToast(`服务端已解析 ${parsedEntries.length} 个词条`, 'success')
       }
@@ -338,6 +348,9 @@ export const VocabularyCreatePage = () => {
                 </div>
                 {headers.length ? (
                   <span className="import-headers">识别字段：{headers.join(' / ')}</span>
+                ) : null}
+                {mappingSummary ? (
+                  <span className="import-headers">列名映射：{mappingSummary}</span>
                 ) : null}
               </div>
             ) : null}
