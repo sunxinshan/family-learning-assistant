@@ -24,6 +24,7 @@ export const TaskCard = ({ task }: { task: LearningTask }) => {
           <Badge tone={taskStatusTone(task.status)}>{taskStatusLabel(task.status)}</Badge>
         </div>
         <div className="task-card-meta">
+          <span>{task.subject === 'english' ? '英语' : '语文'}</span>
           <span>{taskTypeLabel(task.type)}</span>
           <span>{taskModeLabel(task.mode)}</span>
           <span>{task.libraryName}</span>

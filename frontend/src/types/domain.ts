@@ -1,6 +1,10 @@
 export type UserRole = 'user' | 'admin'
 export type UserStatus = 'active' | 'disabled'
+export type Subject = 'english' | 'chinese'
 export type TaskType = 'vocabulary' | 'dictation'
+export type DictationMode = 'online' | 'offline'
+export type PlaybackMode = 'auto' | 'manual'
+export type DictationHint = 'phonetic' | 'meaning'
 export type TaskMode = 'fixed' | 'long_term'
 export type TaskStatus = 'in_progress' | 'completed'
 export type PracticeStatus = 'in_progress' | 'completed'
@@ -29,6 +33,7 @@ export interface WordEntry {
 export interface Vocabulary {
   id: string
   ownerId: string | null
+  subject: Subject
   name: string
   description: string
   category: string
@@ -40,17 +45,26 @@ export interface Vocabulary {
   updatedAt: string
 }
 
+export interface DictationConfig {
+  mode: DictationMode
+  playbackMode: PlaybackMode
+  intervalSeconds: number
+  hint: DictationHint
+}
+
 export interface TaskConfig {
   questionCount: number
   wordsPerGroup: number
   totalGroups: number
   repeatUntilCorrect: boolean
+  dictation?: DictationConfig
 }
 
 export interface LearningTask {
   id: string
   userId: string
   name: string
+  subject: Subject
   type: TaskType
   mode: TaskMode
   status: TaskStatus
@@ -118,11 +132,14 @@ export interface TaskDraft {
   mode: TaskMode
   targetCount: number
   libraryId: string
+  selectedEntryIds: string[]
   wordsPerGroup: number
   repeatUntilCorrect: boolean
+  dictation?: DictationConfig
 }
 
 export interface VocabularyDraft {
+  subject: Subject
   name: string
   description: string
   category: string

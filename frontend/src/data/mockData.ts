@@ -83,6 +83,7 @@ const dailyWords: WordEntry[] = [
 export const seedVocabularies: Vocabulary[] = [
   {
     id: 'lib-personal-1',
+    subject: 'english',
     ownerId: 'user-1',
     name: '日常英语 · 核心 12',
     description: '从本周阅读材料中整理的高频表达，适合晨间短时学习。',
@@ -96,6 +97,7 @@ export const seedVocabularies: Vocabulary[] = [
   },
   {
     id: 'lib-personal-2',
+    subject: 'english',
     ownerId: 'user-1',
     name: '旅行英语',
     description: '为下个月的短途旅行准备的机场、酒店和餐厅场景词汇。',
@@ -116,6 +118,7 @@ export const seedVocabularies: Vocabulary[] = [
   },
   {
     id: 'lib-personal-3',
+    subject: 'english',
     ownerId: 'user-1',
     name: '错题回顾 · Week 44',
     description: '近期练习中反复出错的词汇，用于周末集中回顾。',
@@ -138,6 +141,7 @@ export const seedVocabularies: Vocabulary[] = [
   },
   {
     id: 'lib-public-1',
+    subject: 'english',
     ownerId: null,
     name: '雅思学术核心词',
     description: '覆盖阅读与写作中常见的学术表达，采用主题分组。',
@@ -162,6 +166,7 @@ export const seedVocabularies: Vocabulary[] = [
   },
   {
     id: 'lib-public-2',
+    subject: 'english',
     ownerId: null,
     name: '小学英语三年级 · 家庭',
     description: '家庭与日常起居主题，适合亲子共学和听写。',
@@ -184,6 +189,7 @@ export const seedVocabularies: Vocabulary[] = [
   },
   {
     id: 'lib-public-draft',
+    subject: 'english',
     ownerId: null,
     name: '日常生活 · 厨房安全',
     description: '面向家庭的厨房安全主题词库，等待审核发布。',
@@ -202,11 +208,56 @@ export const seedVocabularies: Vocabulary[] = [
     createdAt: '2026-11-01T15:30:00+08:00',
     updatedAt: '2026-11-01T15:30:00+08:00',
   },
+  {
+    id: 'lib-personal-zh-1',
+    subject: 'chinese',
+    ownerId: 'user-1',
+    name: '语文 · 三年级上册词语',
+    description: '三年级上册重点词语，包含拼音、释义和课文语境。',
+    category: '小学语文',
+    tags: ['语文', '三年级', '词语听写'],
+    visibility: 'personal',
+    published: false,
+    entries: [
+      entry('w-601', '早晨', 'zǎo chén', '名词', ['从天亮到中午前的一段时间'], '早晨，校园里传来了朗朗读书声。', '早晨，校园里传来了朗朗读书声。'),
+      entry('w-602', '忽然', 'hū rán', '副词', ['表示情况发生得迅速而又出乎意料'], '天空忽然下起了小雨。', '天空忽然下起了小雨。'),
+      entry('w-603', '认真', 'rèn zhēn', '形容词', ['严肃对待，不马虎'], '她认真地完成了每一项作业。', '她认真地完成了每一项作业。'),
+      entry('w-604', '观察', 'guān chá', '动词', ['仔细察看事物或现象'], '我们要留心观察周围的事物。', '我们要留心观察周围的事物。'),
+      entry('w-605', '勇敢', 'yǒng gǎn', '形容词', ['不怕危险和困难'], '他勇敢地面对了这次挑战。', '他勇敢地面对了这次挑战。'),
+      entry('w-606', '温暖', 'wēn nuǎn', '形容词', ['暖和', '使人感到亲切'], '温暖的阳光洒满了院子。', '温暖的阳光洒满了院子。'),
+      entry('w-607', '整洁', 'zhěng jié', '形容词', ['整齐清洁'], '教室被同学们打扫得十分整洁。', '教室被同学们打扫得十分整洁。'),
+      entry('w-608', '安静', 'ān jìng', '形容词', ['没有声音', '平静安稳'], '上课铃响后，教室立刻安静下来。', '上课铃响后，教室立刻安静下来。'),
+    ],
+    createdAt: '2026-10-25T19:30:00+08:00',
+    updatedAt: '2026-11-01T20:45:00+08:00',
+  },
+  {
+    id: 'lib-public-zh-1',
+    subject: 'chinese',
+    ownerId: null,
+    name: '小学语文 · 常用词语',
+    description: '小学阶段常见双字词语与基础释义，适合语文听写。',
+    category: '小学语文',
+    tags: ['语文', '基础词语', '听写'],
+    visibility: 'public',
+    published: true,
+    entries: [
+      entry('w-701', '美丽', 'měi lì', '形容词', ['好看', '令人愉悦'], '春天的花园十分美丽。', '春天的花园十分美丽。'),
+      entry('w-702', '发现', 'fā xiàn', '动词', ['经过探索看到或找到'], '我发现了树叶上的小露珠。', '我发现了树叶上的小露珠。'),
+      entry('w-703', '努力', 'nǔ lì', '形容词', ['尽力去做'], '只要努力学习，就会有进步。', '只要努力学习，就会有进步。'),
+      entry('w-704', '帮助', 'bāng zhù', '动词', ['替别人出力或解决困难'], '同学之间应该互相帮助。', '同学之间应该互相帮助。'),
+      entry('w-705', '快乐', 'kuài lè', '形容词', ['感到幸福或满意'], '一家人在一起十分快乐。', '一家人在一起十分快乐。'),
+      entry('w-706', '珍惜', 'zhēn xī', '动词', ['珍重爱惜'], '我们要珍惜宝贵的时间。', '我们要珍惜宝贵的时间。'),
+    ],
+    createdAt: '2026-10-12T09:00:00+08:00',
+    updatedAt: '2026-10-26T14:20:00+08:00',
+  },
 ]
 
 export const seedTasks: LearningTask[] = [
   {
     id: 'task-1',
+    subject: 'english',
     userId: 'user-1',
     name: '晨间词汇 · 第 1 组',
     type: 'vocabulary',
@@ -228,6 +279,7 @@ export const seedTasks: LearningTask[] = [
   },
   {
     id: 'task-2',
+    subject: 'english',
     userId: 'user-1',
     name: '旅行英语听写',
     type: 'dictation',
@@ -242,6 +294,12 @@ export const seedTasks: LearningTask[] = [
       wordsPerGroup: 6,
       totalGroups: 1,
       repeatUntilCorrect: true,
+      dictation: {
+        mode: 'online',
+        playbackMode: 'manual',
+        intervalSeconds: 5,
+        hint: 'phonetic',
+      },
     },
     snapshot: seedVocabularies.find((library) => library.id === 'lib-personal-2')!.entries,
     createdAt: '2026-10-29T20:10:00+08:00',
@@ -249,6 +307,7 @@ export const seedTasks: LearningTask[] = [
   },
   {
     id: 'task-3',
+    subject: 'english',
     userId: 'user-1',
     name: '错题回顾 · Week 44',
     type: 'vocabulary',
@@ -270,6 +329,7 @@ export const seedTasks: LearningTask[] = [
   },
   {
     id: 'task-4',
+    subject: 'english',
     userId: 'user-2',
     name: '周末家庭听写',
     type: 'dictation',
@@ -284,10 +344,44 @@ export const seedTasks: LearningTask[] = [
       wordsPerGroup: 4,
       totalGroups: 2,
       repeatUntilCorrect: false,
+      dictation: {
+        mode: 'online',
+        playbackMode: 'auto',
+        intervalSeconds: 8,
+        hint: 'meaning',
+      },
     },
     snapshot: seedVocabularies.find((library) => library.id === 'lib-public-2')!.entries,
     createdAt: '2026-10-30T19:20:00+08:00',
     updatedAt: '2026-11-01T20:12:00+08:00',
+  },
+  {
+    id: 'task-5',
+    subject: 'chinese',
+    userId: 'user-1',
+    name: '语文词语听写 · 第三单元',
+    type: 'dictation',
+    mode: 'fixed',
+    status: 'in_progress',
+    progress: 0,
+    targetCount: 8,
+    libraryId: 'lib-personal-zh-1',
+    libraryName: '语文 · 三年级上册词语',
+    config: {
+      questionCount: 8,
+      wordsPerGroup: 8,
+      totalGroups: 1,
+      repeatUntilCorrect: false,
+      dictation: {
+        mode: 'offline',
+        playbackMode: 'auto',
+        intervalSeconds: 6,
+        hint: 'phonetic',
+      },
+    },
+    snapshot: seedVocabularies.find((library) => library.id === 'lib-personal-zh-1')!.entries,
+    createdAt: '2026-11-01T19:10:00+08:00',
+    updatedAt: '2026-11-01T19:10:00+08:00',
   },
 ]
 

@@ -18,7 +18,7 @@ import {
   PageHeader,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
-import type { Vocabulary } from '../types/domain'
+import type { Subject, Vocabulary } from '../types/domain'
 import { formatShortDate } from '../utils/format'
 
 type Tab = 'personal' | 'public'
@@ -40,6 +40,7 @@ const LibraryCard = ({
         {publicView ? <LibraryBig size={19} /> : <BookOpenText size={19} />}
       </span>
       <div className="library-card-badges">
+        <Badge tone="info">{library.subject === 'english' ? '英语' : '语文'}</Badge>
         {publicView ? (
           <Badge tone={library.published ? 'success' : 'warning'}>
             {library.published ? '已发布' : '草稿'}
@@ -94,17 +95,19 @@ export const VocabularyPage = () => {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('personal')
   const [query, setQuery] = useState('')
+  const [subject, setSubject] = useState<'all' | Subject>('all')
   const [copyingId, setCopyingId] = useState<string | null>(null)
 
   const source = tab === 'personal' ? libraries : publicLibraries
   const filtered = useMemo(
     () =>
-      source.filter((library) =>
-        `${library.name} ${library.description} ${library.category} ${library.tags.join(' ')}`
+      source.filter((library) => {
+        if (subject !== 'all' && library.subject !== subject) return false
+        return `${library.name} ${library.description} ${library.category} ${library.tags.join(' ')}`
           .toLowerCase()
-          .includes(query.toLowerCase()),
-      ),
-    [source, query],
+          .includes(query.toLowerCase())
+      }),
+    [source, query, subject],
   )
 
   const handleCopy = async (library: Vocabulary) => {
@@ -165,14 +168,27 @@ export const VocabularyPage = () => {
             <span>{publicLibraries.filter((library) => library.published).length}</span>
           </button>
         </div>
-        <div className="search-field">
-          <Search size={15} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索名称、分类或标签"
-            aria-label="搜索词库"
-          />
+        <div className="toolbar-right">
+          <div className="compact-select-wrap">
+            <select
+              aria-label="按学科筛选词库"
+              value={subject}
+              onChange={(event) => setSubject(event.target.value as 'all' | Subject)}
+            >
+              <option value="all">全部学科</option>
+              <option value="english">英语</option>
+              <option value="chinese">语文</option>
+            </select>
+          </div>
+          <div className="search-field">
+            <Search size={15} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索名称、分类或标签"
+              aria-label="搜索词库"
+            />
+          </div>
         </div>
       </div>
 

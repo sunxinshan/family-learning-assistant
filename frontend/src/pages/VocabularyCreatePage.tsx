@@ -18,11 +18,12 @@ import {
   InlineError,
   Modal,
   PageHeader,
+  SelectInput,
   TagInput,
   TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
-import type { WordEntry } from '../types/domain'
+import type { Subject, WordEntry } from '../types/domain'
 import { downloadVocabularyTemplate, parseVocabularyFile } from '../utils/excel'
 
 const blankEntry = (): WordEntry => ({
@@ -44,6 +45,7 @@ export const VocabularyCreatePage = () => {
     isAdmin && searchParams.get('scope') === 'public' ? 'public' : 'personal',
   )
   const [form, setForm] = useState({
+    subject: 'english' as Subject,
     name: '',
     description: '',
     category: '',
@@ -147,6 +149,7 @@ export const VocabularyCreatePage = () => {
     setError('')
     try {
       const draft = {
+        subject: form.subject,
         name: form.name,
         description: form.description,
         category: form.category,
@@ -221,7 +224,16 @@ export const VocabularyCreatePage = () => {
             </div>
             <div className="form-stack">
               {error ? <InlineError>{error}</InlineError> : null}
-              <div className="form-grid-two">
+              <div className="form-grid-three">
+                <Field label="学科">
+                  <SelectInput
+                    value={form.subject}
+                    onChange={(event) => setForm({ ...form, subject: event.target.value as Subject })}
+                  >
+                    <option value="english">英语</option>
+                    <option value="chinese">语文</option>
+                  </SelectInput>
+                </Field>
                 <Field label="词库名称">
                   <TextInput
                     value={form.name}
@@ -364,6 +376,7 @@ export const VocabularyCreatePage = () => {
               </div>
             </div>
             <dl className="create-summary-list">
+              <div><dt>学科</dt><dd>{form.subject === 'english' ? '英语' : '语文'}</dd></div>
               <div><dt>类型</dt><dd>{visibility === 'public' ? '公共词库草稿' : '个人词库'}</dd></div>
               <div><dt>名称</dt><dd>{form.name || '未填写'}</dd></div>
               <div><dt>分类</dt><dd>{form.category || '未分类'}</dd></div>

@@ -142,7 +142,7 @@ export const TaskDetailPage = () => {
       </Link>
 
       <PageHeader
-        eyebrow={taskTypeLabel(task.type)}
+        eyebrow={`${task.subject === 'english' ? '英语' : '语文'} · ${taskTypeLabel(task.type)}`}
         title={task.name}
         description={`任务内容来自「${task.libraryName}」的创建时快照。`}
         actions={
@@ -167,6 +167,7 @@ export const TaskDetailPage = () => {
               <div>
                 <div className="inline-badges">
                   <Badge tone={taskStatusTone(task.status)}>{taskStatusLabel(task.status)}</Badge>
+                  <Badge>{task.subject === 'english' ? '英语' : '语文'}</Badge>
                   <Badge>{taskModeLabel(task.mode)}</Badge>
                   {task.config.repeatUntilCorrect ? <Badge tone="warning">强制答对</Badge> : null}
                 </div>
@@ -196,14 +197,23 @@ export const TaskDetailPage = () => {
                 <dt>学习类型</dt>
                 <dd>{taskTypeLabel(task.type)}</dd>
               </div>
-              <div>
-                <dt>学习数量</dt>
-                <dd>{task.targetCount} 项</dd>
-              </div>
-              <div>
-                <dt>分组规则</dt>
-                <dd>每组 {task.config.wordsPerGroup} 项 · 共 {task.config.totalGroups} 组</dd>
-              </div>
+              {fixed ? (
+                <div>
+                  <dt>固定内容</dt>
+                  <dd>{task.targetCount} 项词条</dd>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <dt>学习数量</dt>
+                    <dd>{task.targetCount} 项</dd>
+                  </div>
+                  <div>
+                    <dt>分组规则</dt>
+                    <dd>每组 {task.config.wordsPerGroup} 项 · 共 {task.config.totalGroups} 组</dd>
+                  </div>
+                </>
+              )}
               <div>
                 <dt>内容来源</dt>
                 <dd>{task.libraryName}</dd>
@@ -216,6 +226,30 @@ export const TaskDetailPage = () => {
                 <dt>最近更新</dt>
                 <dd>{formatDateTime(task.updatedAt)}</dd>
               </div>
+              {task.type === 'dictation' && task.config.dictation ? (
+                <>
+                  <div>
+                    <dt>听写方式</dt>
+                    <dd>{task.config.dictation.mode === 'online' ? '线上听写' : '线下听写'}</dd>
+                  </div>
+                  <div>
+                    <dt>播放方式</dt>
+                    <dd>
+                      {task.config.dictation.playbackMode === 'auto'
+                        ? `自动 · ${task.config.dictation.intervalSeconds} 秒`
+                        : '手动播放'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>页面提示</dt>
+                    <dd>
+                      {task.config.dictation.hint === 'phonetic'
+                        ? task.subject === 'english' ? '英语音标' : '语文拼音'
+                        : '中文释义'}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
             {fixed ? (
               <div className="info-note">
@@ -318,28 +352,28 @@ export const TaskDetailPage = () => {
           <Field label="任务名称">
             <TextInput value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
-          <div className="form-grid-two">
-            <Field label="学习数量" hint={fixed ? '固定任务内容不可修改' : undefined}>
-              <TextInput
-                type="number"
-                min={1}
-                max={task.snapshot.length}
-                value={targetCount}
-                disabled={fixed}
-                onChange={(event) => setTargetCount(Number(event.target.value))}
-              />
-            </Field>
-            <Field label="每组数量" hint={fixed ? '固定任务内容不可修改' : undefined}>
-              <TextInput
-                type="number"
-                min={1}
-                max={targetCount}
-                value={wordsPerGroup}
-                disabled={fixed}
-                onChange={(event) => setWordsPerGroup(Number(event.target.value))}
-              />
-            </Field>
-          </div>
+          {!fixed ? (
+            <div className="form-grid-two">
+              <Field label="学习数量">
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={task.snapshot.length}
+                  value={targetCount}
+                  onChange={(event) => setTargetCount(Number(event.target.value))}
+                />
+              </Field>
+              <Field label="每组数量">
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={targetCount}
+                  value={wordsPerGroup}
+                  onChange={(event) => setWordsPerGroup(Number(event.target.value))}
+                />
+              </Field>
+            </div>
+          ) : null}
           {!fixed ? (
             <div className="info-note">
               修改分组规则后，从下一组开始生效；当前组继续使用旧规则。

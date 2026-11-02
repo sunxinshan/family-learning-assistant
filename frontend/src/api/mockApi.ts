@@ -174,11 +174,24 @@ export const taskApi = {
     if (library.entries.length === 0) {
       throw new Error('词库中没有可供学习的词条')
     }
-    const targetCount = Math.min(draft.targetCount, library.entries.length)
+    const selectedIds = new Set(draft.selectedEntryIds)
+    const selectedEntries = library.entries.filter((entry) => selectedIds.has(entry.id))
+    if (selectedEntries.length === 0) {
+      throw new Error('请至少选择一个词条')
+    }
+    const targetCount =
+      draft.mode === 'fixed'
+        ? selectedEntries.length
+        : Math.min(draft.targetCount, selectedEntries.length)
+    const wordsPerGroup =
+      draft.mode === 'fixed'
+        ? selectedEntries.length
+        : Math.min(draft.wordsPerGroup, targetCount)
     const task: LearningTask = {
       id: uid('task'),
       userId,
       name: draft.name.trim() || '未命名学习任务',
+      subject: library.subject,
       type: draft.type,
       mode: draft.mode,
       status: 'in_progress',
@@ -188,11 +201,24 @@ export const taskApi = {
       libraryName: library.name,
       config: {
         questionCount: targetCount,
-        wordsPerGroup: Math.min(draft.wordsPerGroup, targetCount),
-        totalGroups: Math.ceil(targetCount / Math.max(draft.wordsPerGroup, 1)),
+        wordsPerGroup,
+        totalGroups:
+          draft.mode === 'fixed'
+            ? 1
+            : Math.ceil(targetCount / Math.max(wordsPerGroup, 1)),
         repeatUntilCorrect: draft.repeatUntilCorrect,
+        ...(draft.type === 'dictation'
+          ? {
+              dictation: draft.dictation ?? {
+                mode: 'online',
+                playbackMode: 'manual',
+                intervalSeconds: 5,
+                hint: 'phonetic',
+              },
+            }
+          : {}),
       },
-      snapshot: structuredClone(library.entries).slice(0, targetCount),
+      snapshot: structuredClone(selectedEntries).slice(0, targetCount),
       createdAt: now(),
       updatedAt: now(),
     }
@@ -287,7 +313,7 @@ export const vocabularyApi = {
   async updateMetadata(
     userId: string,
     libraryId: string,
-    changes: Pick<Vocabulary, 'name' | 'description' | 'category' | 'tags'>,
+    changes: Pick<Vocabulary, 'subject' | 'name' | 'description' | 'category' | 'tags'>,
   ): Promise<Vocabulary> {
     await pause()
     const user = requireUser(userId)
@@ -299,6 +325,7 @@ export const vocabularyApi = {
     if (!name) throw new Error('词库名称不能为空')
     const updated: Vocabulary = {
       ...library,
+      subject: changes.subject,
       name,
       description: changes.description.trim(),
       category: changes.category.trim() || '未分类',
@@ -322,6 +349,7 @@ export const vocabularyApi = {
     const library: Vocabulary = {
       id: uid('lib'),
       ownerId: userId,
+      subject: draft.subject,
       name: draft.name.trim(),
       description: draft.description.trim(),
       category: draft.category.trim() || '未分类',
@@ -457,6 +485,7 @@ export const vocabularyApi = {
     const library: Vocabulary = {
       id: uid('lib'),
       ownerId: null,
+      subject: draft.subject,
       name: draft.name.trim(),
       description: draft.description.trim(),
       category: draft.category.trim() || '未分类',
@@ -610,6 +639,65 @@ export const practiceApi = {
     )
     notifyDataChanged()
     return { attempt: nextAttempt, task: nextTask, isCorrect }
+  },
+
+  async submitOfflineAttempt(
+    taskId: string,
+    userId: string,
+    wrongEntryIds: string[],
+  ): Promise<{ attempt: PracticeAttempt; task: LearningTask }> {
+    await pause(240)
+    const user = requireUser(userId)
+    const task = findTaskForUser(taskId, userId)
+    const attempt = practiceApi.getActive(taskId, userId)
+    if (!attempt) throw new Error('没有可完成的线下听写')
+    const wrong = new Set(wrongEntryIds)
+    const answeredAt = now()
+    const elapsed = Math.max(0, new Date(answeredAt).getTime() - new Date(attempt.startedAt).getTime())
+    const entries = task.snapshot.slice(0, attempt.total)
+    const answers: AnswerRecord[] = entries.map((entry, index) => {
+      const correct = !wrong.has(entry.id)
+      return {
+        id: uid('answer'),
+        questionId: entry.id,
+        prompt: entry.word,
+        expected: entry.word,
+        given: correct ? '线下自查：正确' : '线下自查：错误',
+        correct,
+        answeredAt,
+        durationMs: index === 0 ? elapsed : 0,
+      }
+    })
+    const score = answers.filter((answer) => answer.correct).length
+    const nextAttempt: PracticeAttempt = {
+      ...attempt,
+      answers,
+      currentIndex: entries.length,
+      score,
+      status: 'completed',
+      updatedAt: answeredAt,
+      completedAt: answeredAt,
+    }
+    const progress = taskProgressFromAttempt(nextAttempt, task)
+    const nextTask: LearningTask = {
+      ...task,
+      progress,
+      status: progress >= 100 ? 'completed' : 'in_progress',
+      updatedAt: answeredAt,
+    }
+    storage.setTasks(
+      storage.getTasks().map((candidate) =>
+        candidate.id === task.id ? nextTask : candidate,
+      ),
+    )
+    storage.setPractices(
+      storage.getPractices().map((candidate) =>
+        candidate.id === attempt.id ? nextAttempt : candidate,
+      ),
+    )
+    appendLog(user, '完成线下听写', task.name)
+    notifyDataChanged()
+    return { attempt: nextAttempt, task: nextTask }
   },
 
   saveExit(attemptId: string): void {

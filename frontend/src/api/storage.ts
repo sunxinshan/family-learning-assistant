@@ -47,6 +47,55 @@ const DEMO_USER_NAMES: Record<string, string> = {
   'admin-2': 'Manager',
 }
 
+const migrateLearningData = (): void => {
+  const vocabularies = read<Vocabulary[]>(STORAGE_KEYS.vocabularies, [])
+  if (vocabularies.length) {
+    const normalized = vocabularies.map((library) => ({
+      ...library,
+      subject:
+        library.subject ??
+        (library.name.includes('语文') || library.id.includes('-zh-') ? 'chinese' : 'english'),
+    }))
+    const existingIds = new Set(normalized.map((library) => library.id))
+    const missingChineseSeeds = seedVocabularies.filter(
+      (library) =>
+        library.subject === 'chinese' &&
+        ['lib-personal-zh-1', 'lib-public-zh-1'].includes(library.id) &&
+        !existingIds.has(library.id),
+    )
+    write(STORAGE_KEYS.vocabularies, [...normalized, ...missingChineseSeeds])
+  }
+
+  const tasks = read<LearningTask[]>(STORAGE_KEYS.tasks, [])
+  if (tasks.length) {
+    const libraries = read<Vocabulary[]>(STORAGE_KEYS.vocabularies, [])
+    const normalized = tasks.map((task) => {
+      const library = libraries.find((candidate) => candidate.id === task.libraryId)
+      return {
+        ...task,
+        subject: task.subject ?? library?.subject ?? 'english',
+        config:
+          task.type === 'dictation'
+            ? {
+                ...task.config,
+                dictation: task.config.dictation ?? {
+                  mode: 'online',
+                  playbackMode: 'manual',
+                  intervalSeconds: 5,
+                  hint: 'phonetic',
+                },
+              }
+            : task.config,
+      }
+    })
+    if (!normalized.some((task) => task.id === 'task-5')) {
+      const chineseTask = seedTasks.find((task) => task.id === 'task-5')
+      if (chineseTask) normalized.push(chineseTask)
+    }
+    write(STORAGE_KEYS.tasks, normalized)
+  }
+}
+
 const migrateDemoUserNames = (): void => {
   const users = read<User[]>(STORAGE_KEYS.users, [])
   if (users.length) {
@@ -74,6 +123,7 @@ const migrateDemoUserNames = (): void => {
 export const initializeStorage = (force = false): void => {
   if (!force && window.localStorage.getItem(STORAGE_KEYS.initialized) === 'true') {
     migrateDemoUserNames()
+    migrateLearningData()
     return
   }
 

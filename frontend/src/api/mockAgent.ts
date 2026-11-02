@@ -107,6 +107,7 @@ const taskDraftFromText = async (
     targetCount,
   )
   const cleanQuotedName = findQuoted(text.replace(/[「“"]\d+[」”"]/g, ''))
+  const mode = modeFromText(text)
   return {
     name:
       cleanQuotedName && !matchedLibrary.name.includes(cleanQuotedName)
@@ -115,15 +116,30 @@ const taskDraftFromText = async (
           ? `${matchedLibrary.name} · 听写`
           : `每日词汇 · ${matchedLibrary.name}`,
     type: taskType,
-    mode: modeFromText(text),
-    targetCount,
+    mode,
+    targetCount: mode === 'fixed' ? matchedLibrary.entries.length : targetCount,
     libraryId: matchedLibrary.id,
-    wordsPerGroup,
+    selectedEntryIds:
+      mode === 'fixed'
+        ? matchedLibrary.entries.map((entry) => entry.id)
+        : matchedLibrary.entries.slice(0, targetCount).map((entry) => entry.id),
+    wordsPerGroup: mode === 'fixed' ? matchedLibrary.entries.length : wordsPerGroup,
     repeatUntilCorrect: /必须答对|答对才能|强制/.test(text),
+    ...(taskType === 'dictation'
+      ? {
+          dictation: {
+            mode: 'online' as const,
+            playbackMode: 'manual' as const,
+            intervalSeconds: 5,
+            hint: 'phonetic' as const,
+          },
+        }
+      : {}),
   }
 }
 
 const sampleVocabulary = (name: string): VocabularyDraft => ({
+  subject: 'english',
   name,
   description: '由 Agent 根据当前学习需求整理的词库，可继续在词库详情中编辑。',
   category: '日常表达',
@@ -169,6 +185,7 @@ const sampleVocabulary = (name: string): VocabularyDraft => ({
 })
 
 const importedVocabulary = (fileName: string): VocabularyDraft => ({
+  subject: 'english',
   name: fileName.replace(/\.(xlsx?|csv)$/i, '') || '导入词库',
   description: `从 ${fileName} 导入的家庭学习词汇，已按示例数据模拟解析。`,
   category: '导入词库',
@@ -232,8 +249,12 @@ const createTaskAction = (draft: TaskDraft, libraryName: string): PendingAction 
     { label: '学习类型', value: draft.type === 'vocabulary' ? '词汇练习' : '听写练习' },
     { label: '任务模式', value: draft.mode === 'fixed' ? '固定任务' : '长期任务' },
     { label: '内容来源', value: libraryName },
-    { label: '练习数量', value: `${draft.targetCount} 项` },
-    { label: '分组规则', value: `每组 ${draft.wordsPerGroup} 项` },
+    ...(draft.mode === 'fixed'
+      ? [{ label: '已选词条', value: `${draft.selectedEntryIds.length} 项` }]
+      : [
+          { label: '练习数量', value: `${draft.targetCount} 项` },
+          { label: '分组规则', value: `每组 ${draft.wordsPerGroup} 项` },
+        ]),
     { label: '强制答对', value: draft.repeatUntilCorrect ? '开启' : '关闭' },
   ],
   impact: '确认后将保存任务与当前词库内容快照。后续修改原词库不会影响此任务。',

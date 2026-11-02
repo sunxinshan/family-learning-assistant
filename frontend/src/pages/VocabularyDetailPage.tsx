@@ -23,11 +23,12 @@ import {
   InlineError,
   Modal,
   PageHeader,
+  SelectInput,
   TagInput,
   TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStore'
-import type { WordEntry } from '../types/domain'
+import type { Subject, WordEntry } from '../types/domain'
 import { formatDateTime } from '../utils/format'
 
 const blankEntry = (): WordEntry => ({
@@ -61,7 +62,7 @@ export const VocabularyDetailPage = () => {
   const [batchEditOpen, setBatchEditOpen] = useState(false)
   const [batchPartOfSpeech, setBatchPartOfSpeech] = useState('')
   const [metadataOpen, setMetadataOpen] = useState(false)
-  const [metadataDraft, setMetadataDraft] = useState({ name: '', description: '', category: '', tags: [] as string[] })
+  const [metadataDraft, setMetadataDraft] = useState({ subject: 'english' as Subject, name: '', description: '', category: '', tags: [] as string[] })
   const [metadataError, setMetadataError] = useState('')
 
   const editable = Boolean(
@@ -98,6 +99,7 @@ export const VocabularyDetailPage = () => {
 
   const openMetadata = () => {
     setMetadataDraft({
+      subject: library.subject,
       name: library.name,
       description: library.description,
       category: library.category,
@@ -271,6 +273,7 @@ export const VocabularyDetailPage = () => {
           <strong>{formatDateTime(library.updatedAt)}</strong>
         </div>
         <div className="library-detail-tags">
+          <Badge tone="info">{library.subject === 'english' ? '英语' : '语文'}</Badge>
           {library.tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}
           {!editable ? <Badge tone="info">只读</Badge> : null}
         </div>
@@ -412,7 +415,18 @@ export const VocabularyDetailPage = () => {
       >
         <div className="form-stack">
           {metadataError ? <InlineError>{metadataError}</InlineError> : null}
-          <div className="form-grid-two">
+          <div className="form-grid-three">
+            <Field label="学科">
+              <SelectInput
+                value={metadataDraft.subject}
+                onChange={(event) =>
+                  setMetadataDraft({ ...metadataDraft, subject: event.target.value as Subject })
+                }
+              >
+                <option value="english">英语</option>
+                <option value="chinese">语文</option>
+              </SelectInput>
+            </Field>
             <Field label="词库名称">
               <TextInput
                 value={metadataDraft.name}
