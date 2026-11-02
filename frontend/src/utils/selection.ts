@@ -10,7 +10,10 @@ export const parseEntrySelection = (
   entries: WordEntry[],
 ): EntrySelectionResult => {
   const normalized = expression.trim().toLowerCase()
-  if (!normalized || normalized === 'all' || normalized === '*') {
+  if (!normalized) {
+    return { entries: [], invalidTokens: [] }
+  }
+  if (normalized === 'all' || normalized === '*') {
     return { entries, invalidTokens: [] }
   }
 

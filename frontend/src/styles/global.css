@@ -5078,6 +5078,119 @@ ol {
   margin-top: 9px;
 }
 
+
+.task-action-vocab-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-action-vocab-heading > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-action-vocab-heading strong {
+  font-size: var(--text-xs);
+  font-weight: 620;
+}
+
+.task-action-vocab-heading span {
+  margin-top: 2px;
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+}
+
+.task-action-vocab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.task-action-vocab-row {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) 62px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.task-action-vocab-row > span {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.task-action-vocab-row > div:nth-child(2) {
+  min-width: 0;
+}
+
+.task-action-vocab-row strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.task-action-vocab-row small {
+  display: block;
+  color: var(--color-text-tertiary);
+  font-size: 8px;
+}
+
+.task-action-vocab-row p {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--color-text-secondary);
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-action-vocab-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1px;
+}
+
+.task-action-vocab-empty {
+  padding: 18px;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  text-align: center;
+}
+
+.task-action-entry-editor {
+  padding: 11px;
+  background: var(--color-bg-subtle);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.task-action-entry-editor .form-stack,
+.task-action-entry-editor .form-grid-three,
+.task-action-entry-editor .form-grid-two {
+  gap: 9px;
+}
+
+.task-action-entry-editor .form-grid-three,
+.task-action-entry-editor .form-grid-two {
+  margin-top: 9px;
+}
+
+.task-action-entry-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 9px;
+}
+
 /* Responsive */
 @media (max-width: 1180px) {
   .page-container {
@@ -5357,8 +5470,19 @@ ol {
   }
 
   .word-picker-heading,
-  .task-action-word-heading {
+  .task-action-word-heading,
+  .task-action-vocab-heading {
+    align-items: flex-start;
     flex-direction: column;
+  }
+
+  .task-action-vocab-row {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .task-action-vocab-actions {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 
   .create-entry-row > p {

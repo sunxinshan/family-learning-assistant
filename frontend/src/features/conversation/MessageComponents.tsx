@@ -24,8 +24,10 @@ import type {
   PendingAction,
   ToolExecution,
   Vocabulary,
+  VocabularyDraft,
 } from '../../types/domain'
 import { TaskActionEditor } from './TaskActionEditor'
+import { VocabularyActionEditor } from './VocabularyActionEditor'
 import { formatFileSize } from '../../utils/format'
 
 export const AgentAvatar = () => (
@@ -125,12 +127,21 @@ export const ActionPreview = ({
   disabled?: boolean
 }) => {
   const [editedDraft, setEditedDraft] = useState(action.payload.taskDraft)
-  const [editorValid, setEditorValid] = useState(true)
+  const [editedVocabulary, setEditedVocabulary] = useState<VocabularyDraft | undefined>(
+    action.payload.vocabularyDraft,
+  )
+  const [taskEditorValid, setTaskEditorValid] = useState(true)
+  const [vocabularyEditorValid, setVocabularyEditorValid] = useState(true)
   const editableTask = action.operation === 'create_task' && Boolean(editedDraft)
+  const editableVocabulary =
+    (action.operation === 'create_vocabulary' || action.operation === 'import_vocabulary') &&
+    Boolean(editedVocabulary)
 
   useEffect(() => {
     setEditedDraft(action.payload.taskDraft)
-    setEditorValid(true)
+    setEditedVocabulary(action.payload.vocabularyDraft)
+    setTaskEditorValid(true)
+    setVocabularyEditorValid(true)
   }, [action.id])
 
   const effectiveAction: PendingAction =
@@ -140,7 +151,13 @@ export const ActionPreview = ({
           target: editedDraft.name,
           payload: { ...action.payload, taskDraft: editedDraft },
         }
-      : action
+      : editableVocabulary && editedVocabulary
+        ? {
+            ...action,
+            target: editedVocabulary.name,
+            payload: { ...action.payload, vocabularyDraft: editedVocabulary },
+          }
+        : action
 
   return (
     <section className={`action-preview ${action.danger ? 'action-danger' : ''}`}>
@@ -177,7 +194,18 @@ export const ActionPreview = ({
             action={effectiveAction}
             libraries={libraries}
             onChange={setEditedDraft}
-            onValidityChange={setEditorValid}
+            onValidityChange={setTaskEditorValid}
+          />
+        </div>
+      ) : editableVocabulary && editedVocabulary ? (
+        <div className="task-action-editor-wrap">
+          <div className="task-action-editor-note">
+            词库确认前可继续修改学科、名称、描述、标签和全部词条。
+          </div>
+          <VocabularyActionEditor
+            action={effectiveAction}
+            onChange={setEditedVocabulary}
+            onValidityChange={setVocabularyEditorValid}
           />
         </div>
       ) : (
@@ -234,7 +262,12 @@ export const ActionPreview = ({
             size="sm"
             variant={action.danger ? 'danger' : 'primary'}
             onClick={() => onConfirm(effectiveAction)}
-            disabled={disabled || action.executed || (editableTask && !editorValid)}
+            disabled={
+              disabled ||
+              action.executed ||
+              (editableTask && !taskEditorValid) ||
+              (editableVocabulary && !vocabularyEditorValid)
+            }
             icon={action.danger ? ShieldAlert : Check}
           >
             {action.confirmLabel}

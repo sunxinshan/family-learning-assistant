@@ -84,7 +84,13 @@ const taskDraftFromText = async (
   userId: string,
   taskType: 'vocabulary' | 'dictation',
 ): Promise<TaskDraft> => {
-  const libraries = vocabularyApi.listMine(userId)
+  const personalLibraries = vocabularyApi.listMine(userId)
+  const publicLibraries = vocabularyApi
+    .listPublic(userId)
+    .filter((library) => library.published)
+  const libraries = [...personalLibraries, ...publicLibraries].filter(
+    (library, index, all) => all.findIndex((item) => item.id === library.id) === index,
+  )
   const quoted = findQuoted(text)
   const matchedLibrary =
     libraries.find((library) => quoted && library.name.includes(quoted)) ??
@@ -96,7 +102,7 @@ const taskDraftFromText = async (
     ) ??
     libraries[0]
   if (!matchedLibrary) {
-    throw new Error('你还没有个人词库，请先创建或复制一个词库')
+    throw new Error('暂无可用词库，请先创建个人词库或使用已发布的公共词库')
   }
   const allWords = /所有|全部/.test(text)
   const targetCount = Math.min(
