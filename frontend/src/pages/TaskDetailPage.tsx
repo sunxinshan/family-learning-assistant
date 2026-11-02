@@ -572,7 +572,7 @@ export const TaskDetailPage = () => {
           </div>
           <Field label="朗读内容">
             <SelectInput value={hint} onChange={(event) => setHint(event.target.value as DictationHint)}>
-              <option value="phonetic">{task.subject === 'english' ? '英语音标' : '语文拼音'}</option>
+              <option value="phonetic">{task.subject === 'english' ? '英语单词' : '语文拼音'}</option>
               <option value="meaning">中文含义</option>
             </SelectInput>
           </Field>

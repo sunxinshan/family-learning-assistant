@@ -347,7 +347,7 @@ export const TaskActionEditor = ({
                   }
                 >
                   <option value="phonetic">
-                    {selectedLibrary?.subject === 'chinese' ? '语文拼音' : '英语音标'}
+                    {selectedLibrary?.subject === 'chinese' ? '语文拼音' : '英语单词'}
                   </option>
                   <option value="meaning">中文释义</option>
                 </SelectInput>

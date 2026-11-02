@@ -18,6 +18,7 @@ import { Badge, Button, EmptyState } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
 import type { DictationConfig, PracticeAttempt, WordEntry } from '../types/domain'
 import { formatDuration } from '../utils/format'
+import { cancelSpeech, isSpeechSupported, speakText } from '../utils/speech'
 
 interface Feedback {
   given: string
@@ -114,29 +115,26 @@ export const DictationPracticePage = () => {
   const speakEntry = useCallback(
     (target: WordEntry | undefined) => {
       if (!target) return
-      if (!('speechSynthesis' in window)) {
+      if (!isSpeechSupported()) {
         showToast('当前浏览器不支持语音合成，请使用支持 Web Speech 的浏览器', 'danger')
         return
       }
+      const isChinese = task?.subject === 'chinese'
+      // 英语听写要读的是单词本身；音标是一串 IPA 符号，交给语音合成只会被逐字符念成乱码。
       const readingText =
-        config.hint === 'phonetic'
-          ? target.phonetic || target.word
-          : target.meanings.join('；') || target.word
-      window.speechSynthesis.cancel()
-      const repeatCount = Math.max(1, config.repeatCount)
-      for (let index = 0; index < repeatCount; index += 1) {
-        const utterance = new SpeechSynthesisUtterance(readingText)
-        utterance.lang =
-          config.hint === 'meaning' || task?.subject === 'chinese' ? 'zh-CN' : 'en-US'
-        utterance.rate = task?.subject === 'chinese' ? 0.86 : 0.82
-        utterance.pitch = 1
-        utterance.onstart = () => setPlaying(true)
-        utterance.onend = () => {
-          if (index === repeatCount - 1) setPlaying(false)
-        }
-        utterance.onerror = () => setPlaying(false)
-        window.speechSynthesis.speak(utterance)
-      }
+        config.hint === 'meaning'
+          ? target.meanings.join('；') || target.word
+          : isChinese
+            ? target.phonetic || target.word
+            : target.word
+      const lang = config.hint === 'meaning' || isChinese ? 'zh' : 'en'
+      void speakText(readingText, {
+        lang,
+        rate: lang === 'zh' ? 0.86 : 0.82,
+        repeat: config.repeatCount,
+        onStart: () => setPlaying(true),
+        onFinish: () => setPlaying(false),
+      })
     },
     [config.hint, config.repeatCount, showToast, task?.subject],
   )
@@ -224,7 +222,7 @@ export const DictationPracticePage = () => {
 
   useEffect(
     () => () => {
-      window.speechSynthesis?.cancel()
+      cancelSpeech()
     },
     [],
   )
@@ -451,7 +449,12 @@ export const DictationPracticePage = () => {
             </Button>
           </div>
           <div className="dictation-hint-card">
-            <span>朗读内容：{config.hint === 'phonetic' ? '音标/拼音' : '中文含义'}</span>
+            <span>
+              朗读内容：
+              {config.hint === 'phonetic'
+                ? task.subject === 'english' ? '英语单词' : '语文拼音'
+                : '中文含义'}
+            </span>
             <div className="dictation-hint-values">
               <div>
                 <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
@@ -583,13 +586,18 @@ export const DictationPracticePage = () => {
           </button>
           <div>
             <h1>{playing ? '正在播放…' : '点击播放当前朗读内容'}</h1>
-            <p>按任务设置朗读音标/拼音或中文含义，页面同时显示两部分</p>
+            <p>按任务设置朗读单词或中文含义，页面同时显示音标和中文含义</p>
           </div>
           <Button size="sm" icon={RotateCcw} onClick={() => speakEntry(entry)}>重播</Button>
         </div>
 
         <div className="dictation-hint-card">
-          <span>朗读内容：{config.hint === 'phonetic' ? '音标/拼音' : '中文含义'}</span>
+          <span>
+            朗读内容：
+            {config.hint === 'phonetic'
+              ? task.subject === 'english' ? '英语单词' : '语文拼音'
+              : '中文含义'}
+          </span>
           <div className="dictation-hint-values">
             <div>
               <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
