@@ -26,12 +26,15 @@ class ContentService:
         self.vocabulary_service = vocabulary_service
         self.header_analyzer = header_analyzer
 
-    def extract(self, material_id: str, user_id: str, role: str) -> ContentExtraction:
+    def extract(
+        self, material_id: str, user_id: str, role: str, subject: str = "english"
+    ) -> ContentExtraction:
         material = self.material_service.get_owned(material_id, user_id, role)
         draft, errors, mapping = parse_vocabulary(
             Path(material.storage_key),
             material.original_filename,
             self.header_analyzer,
+            subject,
         )
         entries, enrichment_errors, enrichment = enrich_vocabulary_entries(
             draft["entries"], self.header_analyzer

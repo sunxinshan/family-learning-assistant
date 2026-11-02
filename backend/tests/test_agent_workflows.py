@@ -355,6 +355,8 @@ def test_agent_creates_and_imports_vocabulary(client: TestClient) -> None:
     import_action = find_event(import_events, "confirmation_required")["data"]
     assert import_action["operation"] == "import_vocabulary"
     assert len(import_action["payload"]["vocabularyDraft"]["entries"]) == 2
+    entry_ids = [entry["id"] for entry in import_action["payload"]["vocabularyDraft"]["entries"]]
+    assert len(set(entry_ids)) == 2
     import_action["payload"]["vocabularyDraft"]["name"] = "Agent Imported Edited"
     updated = client.patch(
         f"/api/v1/agent/actions/{import_action['id']}/draft",
@@ -468,3 +470,13 @@ def test_agent_selects_prefix_count_defaults_fixed_and_returns_task_link(
     message = find_event(confirmed, "message")
     assert message["data"]["links"][0]["label"] == "打开任务"
     assert message["data"]["links"][0]["to"].startswith("/tasks/")
+
+
+def test_agent_task_defaults_to_fixed_with_no_selection(client: TestClient) -> None:
+    token = login(client)
+    library = create_library(client, token)
+    events = start_run(client, token, f"创建任务，选择「{library['name']}」")
+    action = find_event(events, "confirmation_required")["data"]
+    draft = action["payload"]["taskDraft"]
+    assert draft["mode"] == "fixed"
+    assert draft["selectedEntryIds"] == []

@@ -94,7 +94,7 @@ export const VocabularyCreatePage = () => {
     setMappingSummary('')
     try {
       const material = await api.materials.upload(file)
-      const result = await api.content.extract(material.id)
+      const result = await api.content.extract(material.id, form.subject)
       const parsedEntries = result.extractedJson.entries.map((entry) => ({
         ...entry,
         id: `word-${crypto.randomUUID()}`,
@@ -106,7 +106,11 @@ export const VocabularyCreatePage = () => {
         tags: result.extractedJson.tags,
       })
       setEntries(parsedEntries)
-      setHeaders(['单词', '音标', '词性', '词义', '例句', '例句翻译'])
+      setHeaders(
+        form.subject === 'chinese'
+          ? ['词语', '拼音', '词性', '释义', '例句', '例句翻译']
+          : ['单词', '音标', '词性', '词义', '例句', '例句翻译'],
+      )
       setParseErrors(result.errorsJson.map((item) => item.message ?? `第 ${item.row ?? '?'} 行解析失败`))
       setExtraction({ id: result.id, version: result.version })
       const labels = Object.entries(result.mapping.fields)

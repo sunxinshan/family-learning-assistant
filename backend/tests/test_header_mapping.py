@@ -159,3 +159,21 @@ def test_unresolved_english_enrichment_is_marked_for_manual_edit(client: TestCli
     messages = [item["message"] for item in extraction["errorsJson"]]
     assert any("音标" in message for message in messages)
     assert any("中文释义" in message for message in messages)
+
+
+def test_extraction_preserves_requested_chinese_subject(client: TestClient) -> None:
+    token = _login(client)
+    upload = client.post(
+        "/api/v1/materials",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("chinese.csv", "词语\n苹果\n学习\n", "text/csv")},
+    )
+    assert upload.status_code == 201
+    response = client.post(
+        f"/api/v1/materials/{upload.json()['id']}/extractions?subject=chinese",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["extractedJson"]["subject"] == "chinese"
+    assert body["extractedJson"]["entries"][0]["phonetic"] == "píng guǒ"

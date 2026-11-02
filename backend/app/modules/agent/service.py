@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 
 from app.core.database import Database
 from app.core.exceptions import AppError
+from app.core.models import new_id
 from app.modules.agent.llm import create_llm_adapter
 from app.modules.content.repository import ContentRepository
 from app.modules.content.schemas import ContentExtractionUpdate
@@ -77,7 +78,7 @@ def _parse_selected_ids(text: str, entries: list[Any]) -> list[str]:
                 indexes.add(int(part))
     if indexes:
         return [entry.id for index, entry in enumerate(entries, start=1) if index in indexes]
-    return [entry.id for entry in entries]
+    return []
 
 
 def _decorate_action(action: dict[str, Any]) -> dict[str, Any]:
@@ -422,10 +423,19 @@ class AgentBusinessService:
                 VocabularyService(VocabularyRepository(session)),
                 create_llm_adapter(self.database.settings),
             )
-            extraction = content.extract(material_id, state["user_id"], state.get("role", "user"))
+            subject = (
+                "chinese"
+                if any(word in state["text"] for word in ("语文", "中文", "汉字"))
+                else "english"
+            )
+            extraction = content.extract(
+                material_id, state["user_id"], state.get("role", "user"), subject
+            )
             draft = VocabularyCreate.model_validate(extraction.extracted_json).model_dump(
                 by_alias=True
             )
+            for entry in draft["entries"]:
+                entry["id"] = new_id()
             quoted = _quoted(state["text"])
             if quoted:
                 draft["name"] = quoted

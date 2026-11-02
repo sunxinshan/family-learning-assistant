@@ -95,10 +95,11 @@ def download_template(
 )
 def create_extraction(
     material_id: str,
+    subject: Literal["english", "chinese"] = "english",
     context: RuntimeContext = Depends(get_runtime_context),
     service: ContentService = Depends(get_content_service),
 ) -> ContentExtractionOut:
-    extraction = service.extract(material_id, context.user_id, context.role)
+    extraction = service.extract(material_id, context.user_id, context.role, subject)
     return ContentExtractionOut.model_validate(extraction)
 
 

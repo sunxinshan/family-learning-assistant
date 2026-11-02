@@ -134,7 +134,9 @@ test('online dictation submits answers through the real practice API', async ({ 
 
   await page.goto('/tasks/new')
   await page.getByLabel('任务名称').fill(taskName)
-  await page.getByLabel('任务模式').selectOption('fixed')
+  await expect(page.getByLabel('任务模式')).toHaveValue('fixed')
+  await expect(page.getByText('已选 0 / 2')).toBeVisible()
+  await page.getByRole('button', { name: '全选' }).click()
   await page.getByRole('button', { name: '创建并保存快照' }).click()
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/)
   await page.getByRole('link', { name: '开始学习' }).click()
@@ -214,4 +216,25 @@ test('admin can publish an admin-created personal vocabulary', async ({ page }) 
   await page.goto('/vocabulary')
   await page.getByRole('tab', { name: /公共词库/ }).click()
   await expect(page.getByText(libraryName, { exact: true }).first()).toBeVisible()
+})
+
+
+test('chinese library creation keeps chinese subject and enriches pinyin', async ({ page }) => {
+  const suffix = uid()
+  const libraryName = `Chinese Library ${suffix}`
+  await register(page, `Chinese${suffix}`)
+  await page.goto('/vocabulary/new')
+  await page.getByLabel('学科').selectOption('chinese')
+  await page.locator('input[type=file]').setInputFiles({
+    name: `${libraryName}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from('词语\n苹果\n学习\n'),
+  })
+  await expect(page.getByText('服务端已解析 2 个词条')).toBeVisible()
+  await expect(page.getByLabel('学科')).toHaveValue('chinese')
+  await expect(page.getByText('píng guǒ', { exact: true })).toBeVisible()
+  await expect(page.getByText('xué xí', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '创建词库' }).click()
+  await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
+  await expect(page.getByText('语文', { exact: true }).first()).toBeVisible()
 })

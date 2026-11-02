@@ -57,13 +57,9 @@ export const TaskCreatePage = () => {
   const [form, setForm] = useState({
     name: '',
     type: 'dictation' as TaskType,
-    mode: 'long_term' as 'fixed' | 'long_term',
+    mode: 'fixed' as 'fixed' | 'long_term',
     libraryId: availableLibraries[0]?.id ?? '',
-    wordSelection: availableLibraries[0]?.entries.length
-      ? availableLibraries[0].entries.length === 1
-        ? '1'
-        : `1-${availableLibraries[0].entries.length}`
-      : '',
+    wordSelection: '',
     wordsPerGroup: Math.min(5, availableLibraries[0]?.entries.length ?? 0),
     repeatUntilCorrect: false,
     dictationMode: 'online' as DictationMode,
@@ -82,11 +78,7 @@ export const TaskCreatePage = () => {
     setForm((current) => ({
       ...current,
       libraryId,
-      wordSelection: library.entries.length
-        ? library.entries.length === 1
-          ? '1'
-          : `1-${library.entries.length}`
-        : '',
+      wordSelection: '',
       wordsPerGroup: Math.min(5, library.entries.length),
       name:
         current.name ||

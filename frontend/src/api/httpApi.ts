@@ -424,8 +424,11 @@ export const httpApi = {
   },
 
   content: {
-    extract: (materialId: string) =>
-      request<ContentExtraction>(`/materials/${materialId}/extractions`, { method: 'POST' }),
+    extract: (materialId: string, subject: 'english' | 'chinese' = 'english') =>
+      request<ContentExtraction>(
+        `/materials/${materialId}/extractions?subject=${subject}`,
+        { method: 'POST' },
+      ),
     update: (extractionId: string, version: number, extractedJson: VocabularyDraft) =>
       request<ContentExtraction>(`/content/extractions/${extractionId}`, {
         method: 'PATCH',

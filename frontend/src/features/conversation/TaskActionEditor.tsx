@@ -92,15 +92,13 @@ export const TaskActionEditor = ({
     const library = libraries.find((item) => item.id === libraryId)
     if (!library) return
     const count = library.entries.length
-    setSelectionText(
-      library.entries.length <= 1 ? (library.entries.length ? '1' : '') : `1-${library.entries.length}`,
-    )
+    setSelectionText('')
     setSubjectFilter(library.subject)
     onChange({
       ...draft,
       libraryId,
-      selectedEntryIds: library.entries.map((entry) => entry.id),
-      targetCount: count,
+      selectedEntryIds: [],
+      targetCount: 0,
       wordsPerGroup: fixed ? count : Math.min(Math.max(draft.wordsPerGroup, 1), count),
       dictation: draft.dictation
         ? {

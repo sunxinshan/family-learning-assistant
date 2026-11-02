@@ -210,6 +210,7 @@ def parse_vocabulary(
     path: Path,
     filename: str,
     header_analyzer: HeaderAnalyzer | None = None,
+    subject: str = "english",
 ) -> tuple[dict, list[dict], dict[str, Any]]:
     rows = read_vocabulary_rows(path)
     if not rows:
@@ -265,7 +266,7 @@ def parse_vocabulary(
             }
         )
     draft = {
-        "subject": "english",
+        "subject": subject,
         "name": Path(filename).stem or "导入词库",
         "description": f"从 {filename} 导入的词库",
         "tags": ["Excel 导入"],
