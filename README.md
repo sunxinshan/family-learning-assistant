@@ -20,8 +20,8 @@ npm run dev
 
 演示账户：
 
-- 普通用户：`林知夏` / `demo123`
-- 管理员：`超级管理员` / `admin123`
+- 普通用户：`Alice` / `demo123`
+- 管理员：`Admin` / `admin123`
 
 详细说明见 [frontend/README.md](frontend/README.md)。
 

@@ -17,7 +17,7 @@ export const LoginPage = () => {
   const { currentUser, login, register, resetDemo } = useAppStore()
   const navigate = useNavigate()
   const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [nickname, setNickname] = useState('林知夏')
+  const [nickname, setNickname] = useState('Alice')
   const [password, setPassword] = useState('demo123')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -48,9 +48,9 @@ export const LoginPage = () => {
     setError('')
     try {
       if (role === 'user') {
-        await login('林知夏', 'demo123')
+        await login('Alice', 'demo123')
       } else {
-        await login('超级管理员', 'admin123')
+        await login('Admin', 'admin123')
       }
       navigate('/', { replace: true })
     } catch (cause) {
@@ -64,7 +64,7 @@ export const LoginPage = () => {
     resetDemo()
     setResetOpen(false)
     setMode('login')
-    setNickname('林知夏')
+    setNickname('Alice')
     setPassword('demo123')
     setError('')
   }
@@ -166,7 +166,7 @@ export const LoginPage = () => {
               <span className="demo-login-icon"><UserRound size={18} /></span>
               <span>
                 <strong>普通用户</strong>
-                <small>林知夏 · 词汇与听写学习</small>
+                <small>Alice · 词汇与听写学习</small>
               </span>
               <ArrowRight size={15} />
             </button>

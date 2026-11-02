@@ -29,7 +29,7 @@ const entry = (
 export const seedUsers: User[] = [
   {
     id: 'user-1',
-    nickname: '林知夏',
+    nickname: 'Alice',
     role: 'user',
     status: 'active',
     createdAt: '2026-10-12T09:20:00+08:00',
@@ -38,7 +38,7 @@ export const seedUsers: User[] = [
   },
   {
     id: 'user-2',
-    nickname: '周予安',
+    nickname: 'Bob',
     role: 'user',
     status: 'active',
     createdAt: '2026-10-18T14:35:00+08:00',
@@ -47,7 +47,7 @@ export const seedUsers: User[] = [
   },
   {
     id: 'admin-1',
-    nickname: '超级管理员',
+    nickname: 'Admin',
     role: 'admin',
     status: 'active',
     createdAt: '2026-10-01T08:00:00+08:00',
@@ -421,7 +421,7 @@ export const seedOperationLogs: OperationLog[] = [
   {
     id: 'log-1',
     actorId: 'user-1',
-    actorName: '林知夏',
+    actorName: 'Alice',
     action: '完成听写练习',
     target: '旅行英语听写',
     result: 'success',
@@ -430,7 +430,7 @@ export const seedOperationLogs: OperationLog[] = [
   {
     id: 'log-2',
     actorId: 'admin-1',
-    actorName: '超级管理员',
+    actorName: 'Admin',
     action: '更新公共词库',
     target: '雅思学术核心词',
     result: 'success',
@@ -439,7 +439,7 @@ export const seedOperationLogs: OperationLog[] = [
   {
     id: 'log-3',
     actorId: 'user-1',
-    actorName: '林知夏',
+    actorName: 'Alice',
     action: '创建学习任务',
     target: '错题回顾 · Week 44',
     result: 'success',

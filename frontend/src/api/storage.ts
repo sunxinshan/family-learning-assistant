@@ -40,8 +40,38 @@ const write = <T,>(key: string, value: T): void => {
   window.localStorage.setItem(key, JSON.stringify(value))
 }
 
+const DEMO_USER_NAMES: Record<string, string> = {
+  'user-1': 'Alice',
+  'user-2': 'Bob',
+  'admin-1': 'Admin',
+}
+
+const migrateDemoUserNames = (): void => {
+  const users = read<User[]>(STORAGE_KEYS.users, [])
+  if (users.length) {
+    write(
+      STORAGE_KEYS.users,
+      users.map((user) =>
+        DEMO_USER_NAMES[user.id] ? { ...user, nickname: DEMO_USER_NAMES[user.id] } : user,
+      ),
+    )
+  }
+  const logs = read<OperationLog[]>(STORAGE_KEYS.logs, [])
+  if (logs.length) {
+    write(
+      STORAGE_KEYS.logs,
+      logs.map((log) =>
+        DEMO_USER_NAMES[log.actorId]
+          ? { ...log, actorName: DEMO_USER_NAMES[log.actorId] }
+          : log,
+      ),
+    )
+  }
+}
+
 export const initializeStorage = (force = false): void => {
   if (!force && window.localStorage.getItem(STORAGE_KEYS.initialized) === 'true') {
+    migrateDemoUserNames()
     return
   }
 
