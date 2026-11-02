@@ -10,8 +10,8 @@ import {
   Volume2,
   XCircle,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { PracticeLayout } from '../features/practice/PracticeLayout'
 import { Badge, Button, EmptyState } from '../components/ui'
@@ -35,6 +35,8 @@ const defaultDictationConfig: DictationConfig = {
 export const DictationPracticePage = () => {
   const { taskId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isWrongPractice = location.pathname.endsWith('/wrong')
   const { tasks, currentUser, refresh, showToast } = useAppStore()
   const task = tasks.find((candidate) => candidate.id === taskId)
   const taskExists = tasks.some((candidate) => candidate.id === taskId)
@@ -52,8 +54,31 @@ export const DictationPracticePage = () => {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [showResults, setShowResults] = useState(false)
   const startedAtRef = useRef(performance.now())
-  const entry = task?.snapshot[activeIndex]
-  const offlineEntry = task?.snapshot[offlineIndex]
+  const practiceEntries = useMemo(
+    () =>
+      task
+        ? attempt?.kind === 'wrong'
+          ? task.snapshot.filter((item) => attempt.targetEntryIds?.includes(item.id))
+          : task.snapshot
+        : [],
+    [attempt, task],
+  )
+  const entry = practiceEntries[activeIndex]
+  const offlineEntry = practiceEntries[offlineIndex]
+  const groupIndexFor = (target: WordEntry | undefined) =>
+    target && task && task.mode === 'long_term'
+      ? Math.floor(
+          task.snapshot.findIndex((item) => item.id === target.id) /
+            Math.max(task.config.wordsPerGroup, 1),
+        ) + 1
+      : null
+  const currentGroupIndex = groupIndexFor(entry)
+  const offlineGroupIndex = groupIndexFor(offlineEntry)
+  const wrongContextLabel = isWrongPractice
+    ? currentGroupIndex
+      ? `错题复习 · 第 ${currentGroupIndex} 组`
+      : '错题复习'
+    : undefined
 
   useEffect(() => {
     if (!taskId || !currentUser || !taskExists) {
@@ -63,7 +88,9 @@ export const DictationPracticePage = () => {
     let cancelled = false
     const start = async () => {
       try {
-        const nextAttempt = await api.practice.startOrResume(taskId, currentUser.id)
+        const nextAttempt = isWrongPractice
+          ? await api.practice.startWrongAttempt(taskId, currentUser.id)
+          : await api.practice.startOrResume(taskId, currentUser.id)
         if (cancelled) return
         setAttempt(nextAttempt)
         setActiveIndex(nextAttempt.currentIndex)
@@ -82,7 +109,7 @@ export const DictationPracticePage = () => {
     return () => {
       cancelled = true
     }
-  }, [taskId, currentUser, taskExists, showToast])
+  }, [taskId, currentUser, taskExists, isWrongPractice, showToast])
 
   const speakEntry = useCallback(
     (target: WordEntry | undefined) => {
@@ -171,7 +198,7 @@ export const DictationPracticePage = () => {
     const timer = window.setInterval(() => {
       remaining -= 1
       if (remaining <= 0) {
-        if (offlineIndex + 1 < task.snapshot.length) {
+        if (offlineIndex + 1 < practiceEntries.length) {
           setOfflineIndex((current) => current + 1)
         } else {
           setOfflineReview(true)
@@ -189,6 +216,7 @@ export const DictationPracticePage = () => {
     offlineEntry?.id,
     offlineIndex,
     offlineReview,
+    practiceEntries.length,
     showResults,
     speakEntry,
     task?.id,
@@ -226,8 +254,14 @@ export const DictationPracticePage = () => {
       <div className="practice-shell">
         <main className="practice-main practice-result-page">
           <section className="practice-result-card">
-            <span className="result-kicker">听写完成</span>
-            <h1>{isOffline ? '线下听写自查已提交' : '听写结果已保存'}</h1>
+            <span className="result-kicker">{isWrongPractice ? '错题复习完成' : '听写完成'}</span>
+            <h1>
+              {isWrongPractice
+                ? '本次错题练习结果已保存'
+                : isOffline
+                  ? '线下听写自查已提交'
+                  : '听写结果已保存'}
+            </h1>
             <p>答题事实和任务进度已经保存，可以随时回来再练一次。</p>
             <div className="result-score-row">
               <div className="score-ring" style={{ '--score': `${accuracy * 3.6}deg` } as React.CSSProperties}>
@@ -293,6 +327,7 @@ export const DictationPracticePage = () => {
           task.id,
           currentUser.id,
           wrongEntryIds,
+          isWrongPractice ? 'wrong' : 'regular',
         )
         setAttempt(result.attempt)
         refresh()
@@ -316,10 +351,11 @@ export const DictationPracticePage = () => {
       return (
         <PracticeLayout
           task={task}
-          current={task.snapshot.length}
+          current={practiceEntries.length}
           total={attempt.total}
           onExit={exit}
           centered
+          contextLabel={isWrongPractice ? '错题复习' : undefined}
         >
           <section className="dictation-practice-card offline-review-card">
             <div className="practice-question-meta">
@@ -330,11 +366,11 @@ export const DictationPracticePage = () => {
               <ListChecks size={20} />
               <div>
                 <h1>提交线下自查结果</h1>
-                <p>共 {task.snapshot.length} 个词语，已标记 {wrongEntryIds.length} 个错误。</p>
+                <p>共 {practiceEntries.length} 个词语，已标记 {wrongEntryIds.length} 个错误。</p>
               </div>
             </div>
             <div className="offline-review-list">
-              {task.snapshot.map((word, index) => (
+              {practiceEntries.map((word, index) => (
                 <label
                   key={word.id}
                   className={`offline-review-row ${wrongEntryIds.includes(word.id) ? 'is-wrong' : ''}`}
@@ -372,9 +408,14 @@ export const DictationPracticePage = () => {
       <PracticeLayout
         task={task}
         current={offlineIndex}
-        total={task.snapshot.length}
+        total={practiceEntries.length}
         onExit={exit}
         centered
+        contextLabel={
+          isWrongPractice && offlineGroupIndex
+            ? `错题复习 · 第 ${offlineGroupIndex} 组`
+            : wrongContextLabel
+        }
       >
         <section className="dictation-practice-card">
           <div className="practice-question-meta">
@@ -382,7 +423,7 @@ export const DictationPracticePage = () => {
             <span>在纸上完成听写，全部播放后进入自查核对。</span>
           </div>
           <div className="offline-dictation-progress">
-            <span>当前第 {offlineIndex + 1} / {task.snapshot.length} 个词</span>
+            <span>当前第 {offlineIndex + 1} / {practiceEntries.length} 个词</span>
             <Badge tone={config.playbackMode === 'auto' ? 'info' : 'neutral'}>
               {config.playbackMode === 'auto'
                 ? `自动播放 · ${config.intervalSeconds} 秒 · 朗读 ${config.repeatCount} 次`
@@ -425,7 +466,7 @@ export const DictationPracticePage = () => {
           {countdown !== null ? (
             <div className="auto-play-countdown">
               <Clock3 size={15} />
-              {offlineIndex + 1 < task.snapshot.length
+              {offlineIndex + 1 < practiceEntries.length
                 ? `${countdown} 秒后自动播放下一个词`
                 : `${countdown} 秒后进入自查核对`}
             </div>
@@ -444,14 +485,14 @@ export const DictationPracticePage = () => {
                 variant="primary"
                 icon={ArrowRight}
                 onClick={() => {
-                  if (offlineIndex + 1 < task.snapshot.length) {
+                  if (offlineIndex + 1 < practiceEntries.length) {
                     setOfflineIndex((current) => current + 1)
                   } else {
                     setOfflineReview(true)
                   }
                 }}
               >
-                {offlineIndex + 1 < task.snapshot.length ? '下一个词' : '进入核对'}
+                {offlineIndex + 1 < practiceEntries.length ? '下一个词' : '进入核对'}
               </Button>
             </div>
           </footer>
@@ -466,7 +507,13 @@ export const DictationPracticePage = () => {
 
   if (!entry) {
     return (
-      <PracticeLayout task={task} current={attempt.currentIndex} total={attempt.total} onExit={exit}>
+      <PracticeLayout
+        task={task}
+        current={attempt.currentIndex}
+        total={attempt.total}
+        onExit={exit}
+        contextLabel={wrongContextLabel}
+      >
         <div className="empty-state">
           <h3>没有更多题目</h3>
           <p>本次听写已经结束。</p>
@@ -484,7 +531,7 @@ export const DictationPracticePage = () => {
         expected: entry.word,
         given: answer,
         durationMs: Math.round(performance.now() - startedAtRef.current),
-      })
+      }, isWrongPractice ? 'wrong' : 'regular')
       setAttempt(result.attempt)
       setFeedback({ given: answer.trim(), correct: result.isCorrect })
       refresh()
@@ -507,10 +554,22 @@ export const DictationPracticePage = () => {
   }
 
   return (
-    <PracticeLayout task={task} current={activeIndex} total={attempt.total} onExit={exit} centered>
+      <PracticeLayout
+        task={task}
+        current={activeIndex}
+        total={attempt.total}
+        onExit={exit}
+        centered
+        contextLabel={isWrongPractice ? '错题复习' : undefined}
+      >
       <section className="dictation-practice-card">
         <div className="practice-question-meta">
-          <Badge>线上听写</Badge>
+          <Badge>
+            {isWrongPractice
+              ? `错题练习${currentGroupIndex ? ` · 第 ${currentGroupIndex} 组` : ''} · `
+              : ''}
+            线上听写
+          </Badge>
           <span>
             {config.playbackMode === 'auto'
               ? `自动播放 · 每 ${config.intervalSeconds} 秒重播 · 每次朗读 ${config.repeatCount} 次`

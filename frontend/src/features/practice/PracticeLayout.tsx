@@ -11,6 +11,7 @@ export const PracticeLayout = ({
   onExit,
   children,
   centered = false,
+  contextLabel,
 }: {
   task: LearningTask
   current: number
@@ -18,6 +19,7 @@ export const PracticeLayout = ({
   onExit: () => void
   children: ReactNode
   centered?: boolean
+  contextLabel?: string
 }) => {
   const progress = total > 0 ? Math.round((current / total) * 100) : 0
   return (
@@ -31,7 +33,7 @@ export const PracticeLayout = ({
           <span className="practice-header-divider" />
           <div className="practice-task-name">
             <strong>{task.name}</strong>
-            <span>{taskTypeLabel(task.type)}</span>
+            <span>{contextLabel ?? taskTypeLabel(task.type)}</span>
           </div>
         </div>
         <div className="practice-progress">

@@ -72,6 +72,7 @@ const AppRoutes = () => (
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/practice/dictation/:taskId" element={<DictationPracticePage />} />
+        <Route path="/practice/dictation/:taskId/wrong" element={<DictationPracticePage />} />
         <Route element={<AppShell />}>
           <Route index element={<ChatPage />} />
           <Route path="/tasks" element={<TasksPage />} />

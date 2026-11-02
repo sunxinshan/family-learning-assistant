@@ -22,6 +22,8 @@ class AttemptOut(CamelModel):
     task_id: str
     user_id: str
     task_type: str
+    kind: str
+    target_entry_ids: list[str]
     status: str
     current_index: int
     answers: list[AnswerOut]
@@ -39,3 +41,27 @@ class AnswerSubmit(CamelModel):
 
 class SelfCheckSubmit(CamelModel):
     wrong_entry_ids: list[str]
+
+
+class WrongQuestionOut(CamelModel):
+    snapshot_entry_id: str
+    word: str
+    phonetic: str
+    meanings: list[str]
+    example: str
+    example_translation: str
+    consecutive_correct: int
+    last_wrong_at: datetime
+    group_index: int
+
+
+class WrongQuestionGroupOut(CamelModel):
+    group_index: int
+    entries: list[WrongQuestionOut]
+
+
+class WrongQuestionsOut(CamelModel):
+    task_id: str
+    total: int
+    required_correct_streak: int
+    groups: list[WrongQuestionGroupOut]

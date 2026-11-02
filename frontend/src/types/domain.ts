@@ -8,6 +8,7 @@ export type DictationHint = 'phonetic' | 'meaning'
 export type TaskMode = 'fixed' | 'long_term'
 export type TaskStatus = 'in_progress' | 'completed'
 export type PracticeStatus = 'in_progress' | 'completed'
+export type PracticeKind = 'regular' | 'wrong'
 export type LibraryVisibility = 'personal' | 'public'
 
 export interface User {
@@ -96,6 +97,8 @@ export interface PracticeAttempt {
   taskId: string
   userId: string
   taskType: TaskType
+  kind?: PracticeKind
+  targetEntryIds?: string[]
   status: PracticeStatus
   currentIndex: number
   answers: AnswerRecord[]
@@ -104,6 +107,30 @@ export interface PracticeAttempt {
   completedAt?: string
   score: number
   total: number
+}
+
+export interface WrongQuestion {
+  snapshotEntryId: string
+  word: string
+  phonetic: string
+  meanings: string[]
+  example: string
+  exampleTranslation: string
+  consecutiveCorrect: number
+  lastWrongAt: string
+  groupIndex: number
+}
+
+export interface WrongQuestionGroup {
+  groupIndex: number
+  entries: WrongQuestion[]
+}
+
+export interface WrongQuestions {
+  taskId: string
+  total: number
+  requiredCorrectStreak: number
+  groups: WrongQuestionGroup[]
 }
 
 export interface LearningStats {

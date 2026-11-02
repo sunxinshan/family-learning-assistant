@@ -1,10 +1,17 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
 from app.core.security import RuntimeContext, get_runtime_context
 from app.modules.practice.repository import PracticeRepository
-from app.modules.practice.schemas import AnswerSubmit, AttemptOut, SelfCheckSubmit
+from app.modules.practice.schemas import (
+    AnswerSubmit,
+    AttemptOut,
+    SelfCheckSubmit,
+    WrongQuestionsOut,
+)
 from app.modules.practice.service import PracticeService
 
 router = APIRouter(tags=["practice"])
@@ -26,13 +33,32 @@ def start_attempt(
     return service.start_or_resume(task_id, context.user_id)
 
 
-@router.get("/tasks/{task_id}/attempts/active", response_model=AttemptOut | None)
-def active_attempt(
+@router.post("/tasks/{task_id}/wrong-attempts", response_model=AttemptOut)
+def start_wrong_attempt(
     task_id: str,
     context: RuntimeContext = Depends(get_runtime_context),
     service: PracticeService = Depends(get_practice_service),
+) -> AttemptOut:
+    return service.start_or_resume_wrong(task_id, context.user_id)
+
+
+@router.get("/tasks/{task_id}/wrong-questions", response_model=WrongQuestionsOut)
+def wrong_questions(
+    task_id: str,
+    context: RuntimeContext = Depends(get_runtime_context),
+    service: PracticeService = Depends(get_practice_service),
+) -> WrongQuestionsOut:
+    return service.get_wrong_questions(task_id, context.user_id)
+
+
+@router.get("/tasks/{task_id}/attempts/active", response_model=AttemptOut | None)
+def active_attempt(
+    task_id: str,
+    kind: Literal["regular", "wrong"] = "regular",
+    context: RuntimeContext = Depends(get_runtime_context),
+    service: PracticeService = Depends(get_practice_service),
 ) -> AttemptOut | None:
-    return service.get_active(task_id, context.user_id)
+    return service.get_active(task_id, context.user_id, kind)
 
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptOut)

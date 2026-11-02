@@ -2,10 +2,12 @@ import {
   ArrowLeft,
   BookOpenText,
   CheckCircle2,
+  ChevronDown,
   Headphones,
   Info,
   ListChecks,
   Play,
+  Settings2,
   ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -46,7 +48,8 @@ export const TaskCreatePage = () => {
     )
   }, [libraries, publicLibraries])
 
-  const [subjectFilter, setSubjectFilter] = useState<'all' | Subject>('all')
+  const defaultLibrary = availableLibraries.find((library) => library.subject === 'english')
+  const [subjectFilter, setSubjectFilter] = useState<'all' | Subject>('english')
   const subjectLibraries = useMemo(
     () =>
       availableLibraries.filter(
@@ -58,9 +61,9 @@ export const TaskCreatePage = () => {
     name: '',
     type: 'dictation' as TaskType,
     mode: 'fixed' as 'fixed' | 'long_term',
-    libraryId: availableLibraries[0]?.id ?? '',
+    libraryId: defaultLibrary?.id ?? '',
     wordSelection: '',
-    wordsPerGroup: Math.min(5, availableLibraries[0]?.entries.length ?? 0),
+    wordsPerGroup: Math.min(5, defaultLibrary?.entries.length ?? 0),
     repeatUntilCorrect: false,
     dictationMode: 'online' as DictationMode,
     playbackMode: 'manual' as PlaybackMode,
@@ -279,25 +282,6 @@ export const TaskCreatePage = () => {
               </Field>
 
               <div className="form-grid-two">
-                <Field label="学习类型">
-                  <SelectInput value={form.type} disabled aria-readonly="true">
-                    <option value="dictation">听写练习（V1 唯一正式类型）</option>
-                  </SelectInput>
-                </Field>
-                <Field label="任务模式">
-                  <SelectInput
-                    value={form.mode}
-                    onChange={(event) =>
-                      setForm({ ...form, mode: event.target.value as 'fixed' | 'long_term' })
-                    }
-                  >
-                    <option value="long_term">长期任务</option>
-                    <option value="fixed">固定任务</option>
-                  </SelectInput>
-                </Field>
-              </div>
-
-              <div className="form-grid-two">
                 <Field label="学科筛选">
                   <SelectInput
                     value={subjectFilter}
@@ -381,22 +365,65 @@ export const TaskCreatePage = () => {
                 </div>
               </div>
 
-              {fixed ? (
-                <div className="info-note">
-                  <Info size={15} />
-                  固定任务直接使用已选 {selectedCount} 个词条，不需要学习数量和每组数量。
-                </div>
-              ) : (
-                <Field label="每组数量" hint={`已选 ${selectedCount} 项；学习数量自动等于勾选数量`}>
-                  <TextInput
-                    type="number"
-                    min={1}
-                    max={Math.max(selectedCount, 1)}
-                    value={form.wordsPerGroup}
-                    onChange={(event) => setForm({ ...form, wordsPerGroup: Number(event.target.value) })}
+              <details className="advanced-settings">
+                <summary>
+                  <span className="advanced-settings-title">
+                    <Settings2 size={16} />
+                    高级设置
+                  </span>
+                  <span className="advanced-settings-summary">
+                    {taskTypeLabel(form.type)} · {taskModeLabel(form.mode)} ·{' '}
+                    {fixed ? '固定内容' : `${totalGroups} 组`} · 强制重做{form.repeatUntilCorrect ? '开' : '关'}
+                  </span>
+                  <ChevronDown size={16} className="advanced-settings-chevron" />
+                </summary>
+                <div className="advanced-settings-body">
+                  <div className="form-grid-two">
+                    <Field label="学习类型">
+                      <SelectInput value={form.type} disabled aria-readonly="true">
+                        <option value="dictation">听写练习（V1 唯一正式类型）</option>
+                      </SelectInput>
+                    </Field>
+                    <Field label="任务模式">
+                      <SelectInput
+                        value={form.mode}
+                        onChange={(event) =>
+                          setForm({ ...form, mode: event.target.value as 'fixed' | 'long_term' })
+                        }
+                      >
+                        <option value="long_term">长期任务</option>
+                        <option value="fixed">固定任务</option>
+                      </SelectInput>
+                    </Field>
+                  </div>
+                  {fixed ? (
+                    <div className="info-note">
+                      <Info size={15} />
+                      固定任务直接使用已选 {selectedCount} 个词条，不需要学习数量和每组数量。
+                    </div>
+                  ) : (
+                    <Field
+                      label="每组数量"
+                      hint={`已选 ${selectedCount} 项；该数量会决定 ${totalGroups} 个学习分组`}
+                    >
+                      <TextInput
+                        type="number"
+                        min={1}
+                        max={Math.max(selectedCount, 1)}
+                        value={form.wordsPerGroup}
+                        onChange={(event) =>
+                          setForm({ ...form, wordsPerGroup: Number(event.target.value) })
+                        }
+                      />
+                    </Field>
+                  )}
+                  <Checkbox
+                    checked={form.repeatUntilCorrect}
+                    onChange={(checked) => setForm({ ...form, repeatUntilCorrect: checked })}
+                    label="开启强制重做：答对后才能进入下一组"
                   />
-                </Field>
-              )}
+                </div>
+              </details>
 
               {form.type === 'dictation' ? (
                 <div className="dictation-config-box">
@@ -476,12 +503,6 @@ export const TaskCreatePage = () => {
                   </div>
                 </div>
               ) : null}
-
-              <Checkbox
-                checked={form.repeatUntilCorrect}
-                onChange={(checked) => setForm({ ...form, repeatUntilCorrect: checked })}
-                label="开启强制重做：答对后才能进入下一组"
-              />
 
               <div className="info-note">
                 <Info size={15} />

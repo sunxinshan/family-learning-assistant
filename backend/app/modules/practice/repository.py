@@ -14,11 +14,14 @@ class PracticeRepository:
     def get_attempt(self, attempt_id: str) -> PracticeAttempt | None:
         return self.session.scalar(self._attempt_query().where(PracticeAttempt.id == attempt_id))
 
-    def get_active(self, task_id: str, user_id: str) -> PracticeAttempt | None:
+    def get_active(
+        self, task_id: str, user_id: str, kind: str = "regular"
+    ) -> PracticeAttempt | None:
         return self.session.scalar(
             self._attempt_query().where(
                 PracticeAttempt.task_id == task_id,
                 PracticeAttempt.user_id == user_id,
+                PracticeAttempt.kind == kind,
                 PracticeAttempt.status == "in_progress",
             )
         )
@@ -48,6 +51,11 @@ class PracticeRepository:
                 select(PracticeAnswer)
                 .join(PracticeAttempt, PracticeAttempt.id == PracticeAnswer.attempt_id)
                 .where(PracticeAttempt.task_id == task_id, PracticeAttempt.user_id == user_id)
-                .order_by(PracticeAnswer.answered_at)
+                .order_by(
+                    PracticeAttempt.started_at,
+                    PracticeAttempt.id,
+                    PracticeAnswer.sequence_no,
+                    PracticeAnswer.answered_at,
+                )
             )
         )

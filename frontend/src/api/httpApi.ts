@@ -11,6 +11,7 @@ import type {
   Vocabulary,
   VocabularyDraft,
   WordEntry,
+  WrongQuestions,
 } from '../types/domain'
 import { notifyDataChanged } from './storage'
 import { authSession, request, requestResponse } from './httpClient'
@@ -59,6 +60,8 @@ let attemptsCache: PracticeAttempt[] = []
 let statsCache: LearningStats | null = null
 let adminUsersCache: AdminUser[] = []
 let adminLogsCache: OperationLog[] = []
+const activeAttemptKey = (taskId: string, kind: 'regular' | 'wrong' = 'regular') =>
+  `${taskId}:${kind}`
 const activeAttempts = new Map<string, PracticeAttempt>()
 
 const emptyStats = (): LearningStats => ({
@@ -84,8 +87,9 @@ const cacheAttempt = (attempt: PracticeAttempt): PracticeAttempt => {
   const existing = attemptsCache.findIndex((item) => item.id === attempt.id)
   if (existing >= 0) attemptsCache[existing] = attempt
   else attemptsCache = [attempt, ...attemptsCache]
-  if (attempt.status === 'in_progress') activeAttempts.set(attempt.taskId, attempt)
-  else activeAttempts.delete(attempt.taskId)
+  const kind = attempt.kind ?? 'regular'
+  if (attempt.status === 'in_progress') activeAttempts.set(activeAttemptKey(attempt.taskId, kind), attempt)
+  else activeAttempts.delete(activeAttemptKey(attempt.taskId, kind))
   return attempt
 }
 
@@ -165,7 +169,9 @@ const refreshAll = async (): Promise<void> => {
   statsCache = stats
   activeAttempts.clear()
   attempts.forEach((attempt) => {
-    if (attempt.status === 'in_progress') activeAttempts.set(attempt.taskId, attempt)
+    if (attempt.status === 'in_progress') {
+      activeAttempts.set(activeAttemptKey(attempt.taskId, attempt.kind ?? 'regular'), attempt)
+    }
   })
   if (authSession.current()?.role === 'admin') await refreshAdmin()
 }
@@ -276,7 +282,8 @@ export const httpApi = {
       await request<void>(`/tasks/${taskId}`, { method: 'DELETE' })
       tasksCache = tasksCache.filter((item) => item.id !== taskId)
       attemptsCache = attemptsCache.filter((item) => item.taskId !== taskId)
-      activeAttempts.delete(taskId)
+      activeAttempts.delete(activeAttemptKey(taskId, 'regular'))
+      activeAttempts.delete(activeAttemptKey(taskId, 'wrong'))
       notifyDataChanged()
     },
   },
@@ -447,8 +454,23 @@ export const httpApi = {
       })
       return cacheAttempt(attempt)
     },
-    async getActive(taskId: string, _userId: string): Promise<PracticeAttempt | undefined> {
-      const attempt = await request<PracticeAttempt | null>(`/tasks/${taskId}/attempts/active`)
+    async startWrongAttempt(taskId: string, _userId: string): Promise<PracticeAttempt> {
+      const attempt = await request<PracticeAttempt>(`/tasks/${taskId}/wrong-attempts`, {
+        method: 'POST',
+      })
+      return cacheAttempt(attempt)
+    },
+    async getWrongQuestions(taskId: string, _userId: string): Promise<WrongQuestions> {
+      return request<WrongQuestions>(`/tasks/${taskId}/wrong-questions`)
+    },
+    async getActive(
+      taskId: string,
+      _userId: string,
+      kind: 'regular' | 'wrong' = 'regular',
+    ): Promise<PracticeAttempt | undefined> {
+      const attempt = await request<PracticeAttempt | null>(
+        `/tasks/${taskId}/attempts/active?kind=${kind}`,
+      )
       return attempt ? cacheAttempt(attempt) : undefined
     },
     async get(attemptId: string): Promise<PracticeAttempt | undefined> {
@@ -459,9 +481,13 @@ export const httpApi = {
       taskId: string,
       userId: string,
       input: { prompt: string; expected: string; given: string; durationMs: number },
+      kind: 'regular' | 'wrong' = 'regular',
     ): Promise<{ attempt: PracticeAttempt; task: LearningTask; isCorrect: boolean }> {
       const active =
-        activeAttempts.get(taskId) ?? (await httpApi.practice.startOrResume(taskId, userId))
+        activeAttempts.get(activeAttemptKey(taskId, kind)) ??
+        (kind === 'wrong'
+          ? await httpApi.practice.startWrongAttempt(taskId, userId)
+          : await httpApi.practice.startOrResume(taskId, userId))
       const attempt = await request<PracticeAttempt>(`/attempts/${active.id}/answers`, {
         method: 'POST',
         body: JSON.stringify({ given: input.given, durationMs: input.durationMs }),
@@ -481,9 +507,13 @@ export const httpApi = {
       taskId: string,
       userId: string,
       wrongEntryIds: string[],
+      kind: 'regular' | 'wrong' = 'regular',
     ): Promise<{ attempt: PracticeAttempt; task: LearningTask }> {
       const active =
-        activeAttempts.get(taskId) ?? (await httpApi.practice.startOrResume(taskId, userId))
+        activeAttempts.get(activeAttemptKey(taskId, kind)) ??
+        (kind === 'wrong'
+          ? await httpApi.practice.startWrongAttempt(taskId, userId)
+          : await httpApi.practice.startOrResume(taskId, userId))
       const attempt = await request<PracticeAttempt>(`/attempts/${active.id}/self-check`, {
         method: 'POST',
         body: JSON.stringify({ wrongEntryIds }),

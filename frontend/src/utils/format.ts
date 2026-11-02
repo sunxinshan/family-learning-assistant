@@ -48,5 +48,8 @@ export const taskStatusTone = (status: TaskStatus): 'success' | 'neutral' =>
 export const practicePath = (task: LearningTask): string =>
   `/practice/${task.type}/${task.id}`
 
+export const wrongPracticePath = (task: LearningTask): string =>
+  `/practice/${task.type}/${task.id}/wrong`
+
 export const truncate = (value: string, length: number): string =>
   value.length > length ? `${value.slice(0, length)}…` : value

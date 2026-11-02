@@ -3,15 +3,18 @@ import {
   BookOpenText,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Headphones,
   LockKeyhole,
   MessageSquare,
   Pencil,
   Play,
+  RotateCcw,
+  Settings2,
   Trash2,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import {
@@ -28,7 +31,12 @@ import {
   TextInput,
 } from '../components/ui'
 import { useAppStore } from '../stores/AppStoreContext'
-import type { DictationHint, DictationMode, PlaybackMode } from '../types/domain'
+import type {
+  DictationHint,
+  DictationMode,
+  PlaybackMode,
+  WrongQuestions,
+} from '../types/domain'
 import {
   formatDateTime,
   practicePath,
@@ -36,6 +44,7 @@ import {
   taskStatusLabel,
   taskStatusTone,
   taskTypeLabel,
+  wrongPracticePath,
 } from '../utils/format'
 
 export const TaskDetailPage = () => {
@@ -69,8 +78,30 @@ export const TaskDetailPage = () => {
   )
   const [repeatCount, setRepeatCount] = useState(task?.config.dictation?.repeatCount ?? 1)
   const [hint, setHint] = useState<DictationHint>(task?.config.dictation?.hint ?? 'phonetic')
+  const [wrongQuestions, setWrongQuestions] = useState<WrongQuestions | null>(null)
+  const [wrongQuestionsLoading, setWrongQuestionsLoading] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!task || !currentUser) return
+    let cancelled = false
+    setWrongQuestionsLoading(true)
+    void api.practice
+      .getWrongQuestions(task.id, currentUser.id)
+      .then((result) => {
+        if (!cancelled) setWrongQuestions(result)
+      })
+      .catch(() => {
+        if (!cancelled) setWrongQuestions(null)
+      })
+      .finally(() => {
+        if (!cancelled) setWrongQuestionsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, practices.length, task, task?.id, task?.updatedAt])
 
   if (!task || !currentUser) {
     return (
@@ -178,6 +209,16 @@ export const TaskDetailPage = () => {
                   ? '继续学习'
                   : '开始学习'}
             </Link>
+            {wrongQuestions?.total ? (
+              <Link className="button button-secondary button-md" to={wrongPracticePath(task)}>
+                <RotateCcw size={16} />
+                练习错题 {wrongQuestions.total}
+              </Link>
+            ) : (
+              <Button icon={RotateCcw} disabled title="完成练习并产生错题后可用">
+                练习错题
+              </Button>
+            )}
             <Button icon={Pencil} onClick={openEditor}>编辑</Button>
             <Button variant="ghost" icon={Trash2} onClick={() => setDeleteStage(1)}>删除</Button>
           </>
@@ -204,6 +245,72 @@ export const TaskDetailPage = () => {
               <div className="large-progress-number">{task.progress}%</div>
             </div>
             <ProgressBar value={task.progress} />
+          </section>
+
+          <section className="panel wrong-question-panel">
+            <div className="panel-header">
+              <div>
+                <h2>练习错题</h2>
+                <p>
+                  答错的词条会保留在这里；之后连续答对 {wrongQuestions?.requiredCorrectStreak ?? 2}{' '}
+                  次后自动移出。
+                </p>
+              </div>
+              <Badge tone={wrongQuestions?.total ? 'warning' : 'success'}>
+                {wrongQuestionsLoading
+                  ? '读取中'
+                  : wrongQuestions?.total
+                    ? `${wrongQuestions.total} 项待复习`
+                    : '暂无错题'}
+              </Badge>
+            </div>
+            {wrongQuestions?.groups.length ? (
+              <div className="wrong-question-groups">
+                {wrongQuestions.groups.map((group) => (
+                  <section className="wrong-question-group" key={group.groupIndex}>
+                    <header>
+                      <strong>{fixed ? '全部错题' : `第 ${group.groupIndex} 组`}</strong>
+                      <span>{group.entries.length} 项</span>
+                    </header>
+                    <div>
+                      {group.entries.map((entry) => (
+                        <article key={entry.snapshotEntryId}>
+                          <div>
+                            <strong>{entry.word}</strong>
+                            <span>{entry.phonetic}</span>
+                          </div>
+                          <p>{entry.meanings.join('；')}</p>
+                          <small>
+                            {entry.consecutiveCorrect > 0
+                              ? `已连续答对 ${entry.consecutiveCorrect} 次，再答对 ${Math.max(
+                                  wrongQuestions.requiredCorrectStreak - entry.consecutiveCorrect,
+                                  1,
+                                )} 次移出`
+                              : `连续答对 ${wrongQuestions.requiredCorrectStreak} 次后移出`}
+                          </small>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <div className="wrong-question-empty">
+                <CheckCircle2 size={18} />
+                <span>
+                  {wrongQuestionsLoading ? '正在读取错题记录…' : '目前没有待复习的错题。'}
+                </span>
+              </div>
+            )}
+            {wrongQuestions?.total ? (
+              <div className="wrong-question-actions">
+                <Link className="button button-primary button-md" to={wrongPracticePath(task)}>
+                  <RotateCcw size={16} />
+                  开始练习错题
+                </Link>
+                {!fixed ? <span>长期任务错题按原任务分组展示。</span> : null}
+              </div>
+            ) : null}
           </section>
 
           <section className="panel">
@@ -323,6 +430,7 @@ export const TaskDetailPage = () => {
                     </span>
                     <div>
                       <strong>
+                        {attempt.kind === 'wrong' ? '错题复习 · ' : ''}
                         {attempt.status === 'completed'
                           ? `${attempt.score}/${attempt.total} 正确`
                           : `进行到 ${attempt.currentIndex}/${attempt.total}`}
@@ -376,31 +484,51 @@ export const TaskDetailPage = () => {
           <Field label="任务名称">
             <TextInput value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
-          <Field label="任务模式">
-            <SelectInput
-              value={taskMode}
-              onChange={(event) => setTaskMode(event.target.value as 'fixed' | 'long_term')}
-            >
-              <option value="fixed">固定任务</option>
-              <option value="long_term">长期任务</option>
-            </SelectInput>
-          </Field>
-          {taskMode === 'long_term' ? (
-            <Field label="每组数量" hint={`已选 ${task.targetCount} 项词条`}>
-              <TextInput
-                type="number"
-                min={1}
-                max={task.targetCount}
-                value={wordsPerGroup}
-                onChange={(event) => setWordsPerGroup(Number(event.target.value))}
+          <details className="advanced-settings">
+            <summary>
+              <span className="advanced-settings-title">
+                <Settings2 size={16} />
+                高级设置
+              </span>
+              <span className="advanced-settings-summary">
+                {taskModeLabel(taskMode)} · {taskMode === 'fixed' ? '固定内容' : `每组 ${wordsPerGroup} 项`} · 强制重做
+                {repeatUntilCorrect ? '开' : '关'}
+              </span>
+              <ChevronDown size={16} className="advanced-settings-chevron" />
+            </summary>
+            <div className="advanced-settings-body">
+              <Field label="学习类型">
+                <SelectInput value={task.type} disabled aria-readonly="true">
+                  <option value="dictation">{taskTypeLabel(task.type)}（V1 唯一正式类型）</option>
+                </SelectInput>
+              </Field>
+              <Field label="任务模式">
+                <SelectInput
+                  value={taskMode}
+                  onChange={(event) => setTaskMode(event.target.value as 'fixed' | 'long_term')}
+                >
+                  <option value="fixed">固定任务</option>
+                  <option value="long_term">长期任务</option>
+                </SelectInput>
+              </Field>
+              {taskMode === 'long_term' ? (
+                <Field label="每组数量" hint={`已选 ${task.targetCount} 项词条`}>
+                  <TextInput
+                    type="number"
+                    min={1}
+                    max={task.targetCount}
+                    value={wordsPerGroup}
+                    onChange={(event) => setWordsPerGroup(Number(event.target.value))}
+                  />
+                </Field>
+              ) : null}
+              <Checkbox
+                checked={repeatUntilCorrect}
+                onChange={setRepeatUntilCorrect}
+                label="答对后才能进入下一组"
               />
-            </Field>
-          ) : null}
-          <Checkbox
-            checked={repeatUntilCorrect}
-            onChange={setRepeatUntilCorrect}
-            label="答对后才能进入下一组"
-          />
+            </div>
+          </details>
           <div className="form-grid-two">
             <Field label="听写方式">
               <SelectInput

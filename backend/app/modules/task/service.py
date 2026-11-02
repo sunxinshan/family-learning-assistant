@@ -28,6 +28,7 @@ class PracticeEntry:
     phonetic: str
     meanings: list[str]
     example: str
+    example_translation: str
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class TaskPracticeDefinition:
     target_count: int
     subject: str
     dictation_mode: str
+    words_per_group: int
     entries: list[PracticeEntry]
 
 
@@ -111,6 +113,7 @@ class TaskService:
             target_count=task.target_count,
             subject=task.subject,
             dictation_mode=task.config_json["dictation"]["mode"],
+            words_per_group=task.config_json["words_per_group"],
             entries=[
                 PracticeEntry(
                     id=entry.id,
@@ -120,6 +123,7 @@ class TaskService:
                     phonetic=entry.phonetic,
                     meanings=list(entry.meanings),
                     example=entry.example,
+                    example_translation=entry.example_translation,
                 )
                 for entry in task.snapshot.entries
             ],

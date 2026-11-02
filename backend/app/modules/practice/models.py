@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -15,6 +15,8 @@ class PracticeAttempt(IdMixin, Base):
     )
     user_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), default="regular", nullable=False)
+    target_entry_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="in_progress", nullable=False)
     current_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total: Mapped[int] = mapped_column(Integer, nullable=False)

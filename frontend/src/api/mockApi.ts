@@ -10,6 +10,8 @@ import type {
   Vocabulary,
   VocabularyDraft,
   WordEntry,
+  WrongQuestion,
+  WrongQuestions,
 } from '../types/domain'
 import { notifyDataChanged, storage } from './storage'
 
@@ -550,6 +552,7 @@ export const practiceApi = {
         (attempt) =>
           attempt.taskId === taskId &&
           attempt.userId === userId &&
+          (attempt.kind ?? 'regular') === 'regular' &&
           attempt.status === 'in_progress',
       )
     if (existing) return existing
@@ -559,6 +562,8 @@ export const practiceApi = {
       taskId,
       userId,
       taskType: task.type,
+      kind: 'regular',
+      targetEntryIds: [],
       status: 'in_progress',
       currentIndex: 0,
       answers: [],
@@ -572,13 +577,114 @@ export const practiceApi = {
     return attempt
   },
 
-  getActive(taskId: string, userId: string): PracticeAttempt | undefined {
+  getWrongQuestions(taskId: string, userId: string): WrongQuestions {
+    const task = findTaskForUser(taskId, userId)
+    const answers = storage
+      .getPractices()
+      .filter((attempt) => attempt.taskId === taskId && attempt.userId === userId)
+      .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+      .flatMap((attempt) => attempt.answers)
+    const states = new Map<
+      string,
+      { active: boolean; consecutiveCorrect: number; lastWrongAt: string }
+    >()
+    answers.forEach((answer) => {
+      const entry = task.snapshot.find((candidate) => candidate.word === answer.prompt)
+      if (!entry) return
+      const state = states.get(entry.id) ?? {
+        active: false,
+        consecutiveCorrect: 0,
+        lastWrongAt: answer.answeredAt,
+      }
+      if (answer.correct) {
+        if (state.active) {
+          state.consecutiveCorrect += 1
+          if (state.consecutiveCorrect >= 2) {
+            state.active = false
+            state.consecutiveCorrect = 0
+          }
+        }
+      } else {
+        state.active = true
+        state.consecutiveCorrect = 0
+        state.lastWrongAt = answer.answeredAt
+      }
+      states.set(entry.id, state)
+    })
+    const groups = new Map<number, WrongQuestion[]>()
+    task.snapshot.forEach((entry, index) => {
+      const state = states.get(entry.id)
+      if (!state?.active) return
+      const groupIndex =
+        task.mode === 'fixed'
+          ? 1
+          : Math.floor(index / Math.max(task.config.wordsPerGroup, 1)) + 1
+      const wrongQuestion: WrongQuestion = {
+        snapshotEntryId: entry.id,
+        word: entry.word,
+        phonetic: entry.phonetic,
+        meanings: entry.meanings,
+        example: entry.example,
+        exampleTranslation: entry.exampleTranslation,
+        consecutiveCorrect: state.consecutiveCorrect,
+        lastWrongAt: state.lastWrongAt,
+        groupIndex,
+      }
+      groups.set(groupIndex, [...(groups.get(groupIndex) ?? []), wrongQuestion])
+    })
+    return {
+      taskId,
+      total: [...groups.values()].reduce((sum, entries) => sum + entries.length, 0),
+      requiredCorrectStreak: 2,
+      groups: [...groups.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([groupIndex, entries]) => ({ groupIndex, entries })),
+    }
+  },
+
+  async startWrongAttempt(taskId: string, userId: string): Promise<PracticeAttempt> {
+    await pause()
+    requireUser(userId)
+    const task = findTaskForUser(taskId, userId)
+    const existing = practiceApi.getActive(taskId, userId, 'wrong')
+    if (existing) return existing
+    const wrong = practiceApi.getWrongQuestions(taskId, userId)
+    const targetEntryIds = wrong.groups.flatMap((group) =>
+      group.entries.map((entry) => entry.snapshotEntryId),
+    )
+    if (!targetEntryIds.length) throw new Error('当前任务没有待复习错题')
+    const attempt: PracticeAttempt = {
+      id: uid('attempt'),
+      taskId,
+      userId,
+      taskType: task.type,
+      kind: 'wrong',
+      targetEntryIds,
+      status: 'in_progress',
+      currentIndex: 0,
+      answers: [],
+      startedAt: now(),
+      updatedAt: now(),
+      score: 0,
+      total: targetEntryIds.length,
+    }
+    storage.setPractices([attempt, ...storage.getPractices()])
+    notifyDataChanged()
+    return attempt
+  },
+
+  getActive(
+    taskId: string,
+    userId: string,
+    kind: 'regular' | 'wrong' = 'regular',
+  ): PracticeAttempt | undefined {
     return storage
       .getPractices()
       .find(
         (attempt) =>
           attempt.taskId === taskId &&
           attempt.userId === userId &&
+          (attempt.kind ?? 'regular') === kind &&
           attempt.status === 'in_progress',
       )
   },
@@ -591,11 +697,12 @@ export const practiceApi = {
     taskId: string,
     userId: string,
     input: { prompt: string; expected: string; given: string; durationMs: number },
+    kind: 'regular' | 'wrong' = 'regular',
   ): Promise<{ attempt: PracticeAttempt; task: LearningTask; isCorrect: boolean }> {
     await pause(240)
     const user = requireUser(userId)
     const task = findTaskForUser(taskId, userId)
-    const attempt = practiceApi.getActive(taskId, userId)
+    const attempt = practiceApi.getActive(taskId, userId, kind)
     if (!attempt) throw new Error('没有可继续的练习')
     if (attempt.currentIndex >= attempt.total) throw new Error('本次练习已经完成')
     const isCorrect =
@@ -646,16 +753,21 @@ export const practiceApi = {
     taskId: string,
     userId: string,
     wrongEntryIds: string[],
+    kind: 'regular' | 'wrong' = 'regular',
   ): Promise<{ attempt: PracticeAttempt; task: LearningTask }> {
     await pause(240)
     const user = requireUser(userId)
     const task = findTaskForUser(taskId, userId)
-    const attempt = practiceApi.getActive(taskId, userId)
+    const attempt = practiceApi.getActive(taskId, userId, kind)
     if (!attempt) throw new Error('没有可完成的线下听写')
     const wrong = new Set(wrongEntryIds)
     const answeredAt = now()
     const elapsed = Math.max(0, new Date(answeredAt).getTime() - new Date(attempt.startedAt).getTime())
-    const entries = task.snapshot.slice(0, attempt.total)
+    const targetIds = new Set(attempt.targetEntryIds ?? [])
+    const entries =
+      kind === 'wrong'
+        ? task.snapshot.filter((entry) => targetIds.has(entry.id))
+        : task.snapshot.slice(0, attempt.total)
     const answers: AnswerRecord[] = entries.map((entry, index) => {
       const correct = !wrong.has(entry.id)
       return {
