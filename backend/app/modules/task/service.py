@@ -38,6 +38,7 @@ class TaskPracticeDefinition:
     mode: str
     target_count: int
     subject: str
+    dictation_mode: str
     entries: list[PracticeEntry]
 
 
@@ -109,6 +110,7 @@ class TaskService:
             mode=task.task_mode,
             target_count=task.target_count,
             subject=task.subject,
+            dictation_mode=task.config_json["dictation"]["mode"],
             entries=[
                 PracticeEntry(
                     id=entry.id,

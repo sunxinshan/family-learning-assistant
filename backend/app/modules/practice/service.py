@@ -87,6 +87,11 @@ class PracticeService:
     def get(self, attempt_id: str, user_id: str) -> AttemptOut:
         return attempt_to_out(self._owned_attempt(attempt_id, user_id))
 
+    def get_active(self, task_id: str, user_id: str) -> AttemptOut | None:
+        self.task_service.get(task_id, user_id)
+        attempt = self.repository.get_active(task_id, user_id)
+        return None if attempt is None else attempt_to_out(attempt)
+
     def list(self, user_id: str) -> list[AttemptOut]:
         return [attempt_to_out(item) for item in self.repository.list_for_user(user_id)]
 
@@ -187,7 +192,12 @@ class PracticeService:
         if attempt.status != "in_progress":
             raise AppError("attempt_completed", "本次练习已经完成", status_code=409)
         definition = self.task_service.get_practice_definition(attempt.task_id, user_id)
+        if definition.dictation_mode != "offline":
+            raise AppError("self_check_not_allowed", "线上听写请直接提交答案", status_code=409)
         wrong = set(payload.wrong_entry_ids)
+        known_ids = {entry.id for entry in definition.entries}
+        if not wrong.issubset(known_ids):
+            raise AppError("invalid_wrong_entries", "自查词条不属于当前任务", status_code=422)
         now = datetime.now(UTC)
         elapsed = max(0, int((now - attempt.started_at).total_seconds() * 1000))
         for index, entry in enumerate(definition.entries, start=1):

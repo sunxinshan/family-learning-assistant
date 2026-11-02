@@ -31,10 +31,8 @@ def active_attempt(
     task_id: str,
     context: RuntimeContext = Depends(get_runtime_context),
     service: PracticeService = Depends(get_practice_service),
-    session: Session = Depends(get_session),
 ) -> AttemptOut | None:
-    attempt = PracticeRepository(session).get_active(task_id, context.user_id)
-    return None if not attempt else service.get(attempt.id, context.user_id)
+    return service.get_active(task_id, context.user_id)
 
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptOut)
