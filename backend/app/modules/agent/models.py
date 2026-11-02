@@ -19,6 +19,8 @@ class AgentRun(IdMixin, TimestampMixin, Base):
     draft_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    token_usage_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
 class AgentRunEvent(IdMixin, Base):

@@ -3,14 +3,17 @@ from fastapi.responses import StreamingResponse
 
 from app.core.exceptions import AppError
 from app.core.security import RuntimeContext, get_runtime_context
+from app.modules.agent.redaction import redact
 from app.modules.agent.repository import AgentRepository
 from app.modules.agent.runtime import AgentRuntime
 from app.modules.agent.schemas import (
     ActionConfirmRequest,
     ActionUpdateRequest,
+    AgentRunDetailOut,
     AgentRunOut,
     AgentRunRequest,
 )
+from app.modules.agent.tools import ToolRegistry
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -26,7 +29,7 @@ def run_agent(
     runtime: AgentRuntime = Depends(get_runtime),
 ) -> StreamingResponse:
     return StreamingResponse(
-        runtime.run(context.user_id, context.role, payload.message),
+        runtime.run(context.user_id, context.role, payload.message, payload.material_id),
         media_type="text/event-stream",
     )
 
@@ -53,6 +56,41 @@ def get_run(
         )
 
 
+@router.get("/runs/{run_id}/details", response_model=AgentRunDetailOut)
+def get_run_details(
+    run_id: str,
+    request: Request,
+    context: RuntimeContext = Depends(get_runtime_context),
+) -> AgentRunDetailOut:
+    with request.app.state.database.session() as session:
+        repository = AgentRepository(session)
+        run = repository.get_run(run_id)
+        if not run or (run.user_id != context.user_id and context.role != "admin"):
+            raise AppError("run_not_found", "执行记录不存在", status_code=404)
+        events = repository.list_events(run.id)
+        duration_ms = max(0, int((run.updated_at - run.created_at).total_seconds() * 1000))
+        tools = ToolRegistry(request.app.state.agent_runtime.business).available(context.role)
+        return AgentRunDetailOut.model_validate(
+            {
+                "id": run.id,
+                "conversation_id": run.conversation_id,
+                "user_id": run.user_id,
+                "status": run.status,
+                "pending_action": redact(run.pending_action_json),
+                "draft_version": run.draft_version,
+                "config_hash": run.config_hash,
+                "prompt_version": run.prompt_version,
+                "token_usage": redact(run.token_usage_json),
+                "error_message": redact(run.error_message),
+                "duration_ms": duration_ms,
+                "events": [redact(event.payload_json) for event in events],
+                "available_tools": tools,
+                "created_at": run.created_at,
+                "updated_at": run.updated_at,
+            }
+        )
+
+
 @router.get("/runs/{run_id}/events")
 def replay_events(
     run_id: str,
@@ -74,7 +112,7 @@ def update_action(
     context: RuntimeContext = Depends(get_runtime_context),
     runtime: AgentRuntime = Depends(get_runtime),
 ) -> dict:
-    return runtime.update_action(run_id, context.user_id, payload.action)
+    return runtime.update_action(run_id, context.user_id, context.role, payload.action)
 
 
 @router.post("/actions/{run_id}/confirm")

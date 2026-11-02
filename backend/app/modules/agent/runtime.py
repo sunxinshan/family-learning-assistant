@@ -39,21 +39,28 @@ def build_agent_graph(
             "task_create",
             "task_update",
             "task_delete",
+            "vocabulary_create",
+            "vocabulary_import",
             "learning",
             "chat",
             "unclear",
         }:
             route = "unclear"
-        return {**state, "route": route}
+        return {**state, "route": route, "token_usage": intent.get("usage")}
 
     def prepare(state: AgentState) -> AgentState:
-        if state.get("route") == "task_create":
+        route = state.get("route")
+        if route == "task_create":
             return _prepare_task_action(state, business)
-        return {
-            **state,
-            "response": "该工作流将在后续阶段开放。",
-            "route": "chat",
-        }
+        if route == "task_update":
+            return business.prepare_task_update(state)
+        if route == "task_delete":
+            return business.prepare_task_delete(state)
+        if route == "vocabulary_create":
+            return business.prepare_vocabulary_create(state)
+        if route == "vocabulary_import":
+            return business.prepare_vocabulary_import(state)
+        return {**state, "response": "暂时无法明确识别这个操作，请补充目标。", "route": "chat"}
 
     def respond(state: AgentState) -> AgentState:
         if state.get("route") == "learning":
@@ -82,11 +89,29 @@ def build_agent_graph(
             return {**state, "pending_action": None, "response": "确认的操作已失效，请重新发起。"}
         if resume_value.get("draft_version") != state.get("draft_version"):
             return {**state, "pending_action": None, "response": "配置版本已变化，请重新确认。"}
+        if resume_value.get("config_hash") != state.get("config_hash"):
+            return {**state, "pending_action": None, "response": "配置已变化，请重新确认。"}
+        if action.get("operation") == "delete_task" and action.get("stage") == 1:
+            next_action = business.stage_delete_confirmation(action, state["user_id"])
+            next_version = int(state.get("draft_version", 1)) + 1
+            return {
+                **state,
+                "pending_action": next_action,
+                "draft_version": next_version,
+                "config_hash": next_action["config_hash"],
+                "response": "第一次确认已记录，请再次确认永久删除。",
+            }
         result = business.execute(action, state["user_id"], role=state.get("role", "user"))
         return {**state, "pending_action": None, "response": result}
 
     def route_after_classify(state: AgentState) -> str:
-        if state.get("route") in {"task_create", "task_update", "task_delete"}:
+        if state.get("route") in {
+            "task_create",
+            "task_update",
+            "task_delete",
+            "vocabulary_create",
+            "vocabulary_import",
+        }:
             return "prepare"
         if state.get("route") in {"learning", "chat", "unclear"}:
             return "respond"
@@ -185,7 +210,45 @@ class AgentRuntime:
             run_id=run_id,
         )
 
-    def run(self, user_id: str, role: str, text: str) -> Iterator[str]:
+    def _failure_events(
+        self,
+        session,
+        repository: AgentRepository,
+        run_id: str,
+        exc: Exception,
+        *,
+        preserve_pending: bool,
+    ) -> list[str]:
+        session.rollback()
+        run = repository.get_run(run_id)
+        if not run:
+            return []
+        code = exc.code if isinstance(exc, AppError) else "agent_execution_failed"
+        message = exc.message if isinstance(exc, AppError) else "执行失败，请稍后重试"
+        run.status = (
+            "waiting_confirmation" if preserve_pending and run.pending_action_json else "failed"
+        )
+        run.error_message = message
+        run.lease_until = None
+        run.updated_at = _now()
+        error = self._append_event(
+            repository,
+            run,
+            "error",
+            {"code": code, "message": message},
+        )
+        done = self._append_event(
+            repository,
+            run,
+            "done",
+            {"executionId": run.id, "status": run.status},
+        )
+        session.commit()
+        return [self._sse(error), self._sse(done)]
+
+    def run(
+        self, user_id: str, role: str, text: str, material_id: str | None = None
+    ) -> Iterator[str]:
         with self.database.session() as session:
             repository = AgentRepository(session)
             conversations = self._conversation_service(session)
@@ -224,48 +287,65 @@ class AgentRuntime:
             session.commit()
             yield self._sse(start_event)
 
-            self.graph.invoke(
-                {
-                    "user_id": user_id,
-                    "role": role,
-                    "conversation_id": conversation.id,
-                    "run_id": run.id,
-                    "text": text,
-                    "pending_action": None,
-                    "draft_version": 0,
-                },
-                self._config(conversation.id),
-            )
-            snapshot = self.graph.get_state(self._config(conversation.id))
-            values = snapshot.values
-            pending_action = values.get("pending_action")
-            response = values.get("response", "")
-            assistant_message = {
-                "id": new_id(),
-                "role": "assistant",
-                "kind": "text",
-                "content": response,
-                "createdAt": _now().isoformat(),
-            }
-            self._store_message(conversations, conversation, assistant_message, run.id)
-            msg_event = self._append_event(repository, run, "message", {"content": response})
-            yield self._sse(msg_event)
-            if pending_action:
-                run.status = "waiting_confirmation"
-                run.pending_action_json = pending_action
-                run.draft_version = int(values.get("draft_version", 1))
-                run.config_hash = values.get("config_hash")
-                action_event = self._append_event(
-                    repository, run, "confirmation_required", pending_action
+            try:
+                self.graph.invoke(
+                    {
+                        "user_id": user_id,
+                        "role": role,
+                        "conversation_id": conversation.id,
+                        "run_id": run.id,
+                        "text": text,
+                        "material_id": material_id,
+                        "pending_action": None,
+                        "draft_version": 0,
+                    },
+                    self._config(conversation.id),
                 )
-                yield self._sse(action_event)
-            else:
-                run.status = "completed"
-            run.lease_until = _now() + timedelta(minutes=2)
-            run.updated_at = _now()
-            done_event = self._append_event(repository, run, "done", {"executionId": run.id})
-            session.commit()
-            yield self._sse(done_event)
+                snapshot = self.graph.get_state(self._config(conversation.id))
+                values = snapshot.values
+                pending_action = values.get("pending_action")
+                response = values.get("response", "")
+                assistant_message = {
+                    "id": new_id(),
+                    "role": "assistant",
+                    "kind": "text",
+                    "content": response,
+                    "createdAt": _now().isoformat(),
+                }
+                self._store_message(conversations, conversation, assistant_message, run.id)
+                msg_event = self._append_event(repository, run, "message", {"content": response})
+                yield self._sse(msg_event)
+                if pending_action:
+                    draft_version = int(values.get("draft_version", 1))
+                    config_hash = values.get("config_hash")
+                    pending_action = {
+                        **pending_action,
+                        "draft_version": draft_version,
+                        "draftVersion": draft_version,
+                        "config_hash": config_hash,
+                        "configHash": config_hash,
+                    }
+                    run.status = "waiting_confirmation"
+                    run.pending_action_json = pending_action
+                    run.draft_version = draft_version
+                    run.config_hash = config_hash
+                    action_event = self._append_event(
+                        repository, run, "confirmation_required", pending_action
+                    )
+                    yield self._sse(action_event)
+                else:
+                    run.status = "completed"
+                run.lease_until = _now() + timedelta(minutes=2)
+                run.token_usage_json = values.get("token_usage")
+                run.error_message = None
+                run.updated_at = _now()
+                done_event = self._append_event(repository, run, "done", {"executionId": run.id})
+                session.commit()
+                yield self._sse(done_event)
+            except Exception as exc:
+                yield from self._failure_events(
+                    session, repository, run.id, exc, preserve_pending=False
+                )
 
     def validate_confirm(
         self, run_id: str, user_id: str, action_id: str, draft_version: int, config_hash: str
@@ -317,54 +397,73 @@ class AgentRuntime:
             )
             session.commit()
             yield self._sse(progress)
-            self.graph.invoke(
-                Command(
-                    resume={
-                        "decision": "confirm",
-                        "action_id": action_id,
-                        "draft_version": draft_version,
-                        "config_hash": config_hash,
-                    }
-                ),
-                self._config(run.thread_id),
-            )
-            snapshot = self.graph.get_state(self._config(run.thread_id))
-            values = snapshot.values
-            pending_action = values.get("pending_action")
-            response = values.get("response", "")
-            conversations = self._conversation_service(session)
-            conversation = conversations.get_or_create(user_id)
-            self._store_message(
-                conversations,
-                conversation,
-                {
-                    "id": new_id(),
-                    "role": "assistant",
-                    "kind": "text",
-                    "content": response,
-                    "createdAt": _now().isoformat(),
-                },
-                run.id,
-            )
-            message = self._append_event(repository, run, "message", {"content": response})
-            yield self._sse(message)
-            if pending_action:
-                run.status = "waiting_confirmation"
-                run.pending_action_json = pending_action
-                run.draft_version = int(values.get("draft_version", run.draft_version))
-                run.config_hash = values.get("config_hash")
-                confirmation = self._append_event(
-                    repository, run, "confirmation_required", pending_action
+            try:
+                self.graph.invoke(
+                    Command(
+                        resume={
+                            "decision": "confirm",
+                            "action_id": action_id,
+                            "draft_version": draft_version,
+                            "config_hash": config_hash,
+                        }
+                    ),
+                    self._config(run.thread_id),
                 )
-                yield self._sse(confirmation)
-            else:
-                run.status = "completed"
-                run.pending_action_json = None
-            done = self._append_event(repository, run, "done", {"executionId": run.id})
-            session.commit()
-            yield self._sse(done)
+                snapshot = self.graph.get_state(self._config(run.thread_id))
+                values = snapshot.values
+                pending_action = values.get("pending_action")
+                response = values.get("response", "")
+                conversations = self._conversation_service(session)
+                conversation = conversations.get_or_create(user_id)
+                self._store_message(
+                    conversations,
+                    conversation,
+                    {
+                        "id": new_id(),
+                        "role": "assistant",
+                        "kind": "text",
+                        "content": response,
+                        "createdAt": _now().isoformat(),
+                    },
+                    run.id,
+                )
+                message = self._append_event(repository, run, "message", {"content": response})
+                yield self._sse(message)
+                if pending_action:
+                    draft_version = int(values.get("draft_version", run.draft_version))
+                    config_hash = values.get("config_hash")
+                    pending_action = {
+                        **pending_action,
+                        "draft_version": draft_version,
+                        "draftVersion": draft_version,
+                        "config_hash": config_hash,
+                        "configHash": config_hash,
+                    }
+                    run.status = "waiting_confirmation"
+                    run.pending_action_json = pending_action
+                    run.draft_version = draft_version
+                    run.config_hash = config_hash
+                    confirmation = self._append_event(
+                        repository, run, "confirmation_required", pending_action
+                    )
+                    yield self._sse(confirmation)
+                else:
+                    run.status = "completed"
+                    run.pending_action_json = None
+                    run.token_usage_json = values.get("token_usage")
+                run.error_message = None
+                run.updated_at = _now()
+                done = self._append_event(repository, run, "done", {"executionId": run.id})
+                session.commit()
+                yield self._sse(done)
+            except Exception as exc:
+                yield from self._failure_events(
+                    session, repository, run.id, exc, preserve_pending=True
+                )
 
-    def update_action(self, run_id: str, user_id: str, action: dict[str, Any]) -> dict[str, Any]:
+    def update_action(
+        self, run_id: str, user_id: str, role: str, action: dict[str, Any]
+    ) -> dict[str, Any]:
         with self.database.session() as session:
             repository = AgentRepository(session)
             run = repository.get_run(run_id)
@@ -374,10 +473,14 @@ class AgentRuntime:
                 raise AppError("run_not_waiting", "当前操作不在等待确认状态", status_code=409)
             if action.get("id") != run.id:
                 raise AppError("action_mismatch", "操作标识不匹配", status_code=409)
+            self.business.validate_action(action, user_id, role)
             current_version = run.draft_version
             new_version = current_version + 1
             action["draft_version"] = new_version
+            action["draftVersion"] = new_version
             config_hash = _hash_payload(action.get("payload", {}))
+            action["config_hash"] = config_hash
+            action["configHash"] = config_hash
             self.graph.update_state(
                 self._config(run.thread_id),
                 {

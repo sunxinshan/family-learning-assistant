@@ -221,3 +221,155 @@ def test_agent_learning_query_is_read_only(client: TestClient) -> None:
     message = find_event(events, "message")
     assert "已完成练习" in message["data"]["content"]
     assert client.get("/api/v1/learning/stats", headers=auth(token)).json()["practiceCount"] == 0
+
+
+def _confirm(
+    client: TestClient, token: str, run_id: str, version: int, config_hash: str
+) -> list[dict]:
+    response = client.post(
+        f"/api/v1/agent/actions/{run_id}/confirm",
+        headers=auth(token),
+        json={"draftVersion": version, "configHash": config_hash},
+    )
+    assert response.status_code == 200, response.text
+    return parse_sse(response.text)
+
+
+def _create_page_task(
+    client: TestClient, token: str, library: dict, mode: str = "long_term"
+) -> dict:
+    response = client.post(
+        "/api/v1/tasks",
+        headers=auth(token),
+        json={
+            "name": "Workflow Task",
+            "type": "dictation",
+            "mode": mode,
+            "libraryId": library["id"],
+            "selectedEntryIds": [entry["id"] for entry in library["entries"]],
+            "wordsPerGroup": 2,
+            "repeatUntilCorrect": False,
+            "dictation": {
+                "mode": "online",
+                "playbackMode": "manual",
+                "intervalSeconds": 5,
+                "hint": "phonetic",
+                "repeatCount": 2,
+            },
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_agent_updates_long_term_task_through_task_service(client: TestClient) -> None:
+    token = login(client)
+    library = create_library(client, token)
+    task = _create_page_task(client, token, library)
+    events = start_run(
+        client,
+        token,
+        f"修改任务「{task['name']}」，改成每组1个，自动播放，间隔8秒，朗读3次，中文",
+    )
+    confirmation = find_event(events, "confirmation_required")
+    action = confirmation["data"]
+    assert action["operation"] == "update_task"
+    assert action["payload"]["taskId"] == task["id"]
+    _confirm(
+        client,
+        token,
+        confirmation["run_id"],
+        action["draft_version"],
+        _run_hash(client, token, confirmation["run_id"]),
+    )
+    updated = client.get(f"/api/v1/tasks/{task['id']}", headers=auth(token)).json()
+    assert updated["config"]["wordsPerGroup"] == 1
+    assert updated["config"]["dictation"]["playbackMode"] == "auto"
+    assert updated["config"]["dictation"]["intervalSeconds"] == 8
+    assert updated["config"]["dictation"]["repeatCount"] == 3
+    assert updated["config"]["dictation"]["hint"] == "meaning"
+
+
+def test_agent_deletes_task_with_two_stage_confirmation(client: TestClient) -> None:
+    token = login(client)
+    library = create_library(client, token)
+    task = _create_page_task(client, token, library)
+    events = start_run(client, token, f"删除任务「{task['name']}」")
+    first = find_event(events, "confirmation_required")
+    assert first["data"]["stage"] == 1
+    run_id = first["run_id"]
+
+    second_events = _confirm(
+        client, token, run_id, first["data"]["draft_version"], _run_hash(client, token, run_id)
+    )
+    assert client.get(f"/api/v1/tasks/{task['id']}", headers=auth(token)).status_code == 200
+    second = find_event(second_events, "confirmation_required")
+    assert second["data"]["stage"] == 2
+    assert second["data"]["draft_version"] == 2
+
+    _confirm(
+        client, token, run_id, second["data"]["draft_version"], _run_hash(client, token, run_id)
+    )
+    assert client.get(f"/api/v1/tasks/{task['id']}", headers=auth(token)).status_code == 404
+
+
+def test_agent_creates_and_imports_vocabulary(client: TestClient) -> None:
+    token = login(client)
+    events = start_run(client, token, "创建英语词库「Agent Words」，标签 agent,demo")
+    action = find_event(events, "confirmation_required")["data"]
+    assert action["operation"] == "create_vocabulary"
+    assert action["payload"]["vocabularyDraft"]["name"] == "Agent Words"
+    assert action["payload"]["vocabularyDraft"]["tags"] == ["agent", "demo"]
+    _confirm(
+        client,
+        token,
+        action["id"],
+        action["draft_version"],
+        _run_hash(client, token, action["id"]),
+    )
+    created = client.get("/api/v1/vocabularies?scope=mine", headers=auth(token)).json()
+    assert next(item for item in created if item["name"] == "Agent Words")
+
+    upload = client.post(
+        "/api/v1/materials",
+        headers=auth(token),
+        files={
+            "file": (
+                "agent-import.csv",
+                "单词,音标,词性,词义\norbit,/ˈɔːbɪt/,n.,轨道\nsignal,/ˈsɪɡnəl/,n.,信号\n",
+                "text/csv",
+            )
+        },
+    )
+    assert upload.status_code == 201, upload.text
+    response = client.post(
+        "/api/v1/agent/runs/stream",
+        headers=auth(token),
+        json={
+            "message": "导入词库「Agent Imported」",
+            "materialId": upload.json()["id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    import_events = parse_sse(response.text)
+    import_action = find_event(import_events, "confirmation_required")["data"]
+    assert import_action["operation"] == "import_vocabulary"
+    assert len(import_action["payload"]["vocabularyDraft"]["entries"]) == 2
+    import_action["payload"]["vocabularyDraft"]["name"] = "Agent Imported Edited"
+    updated = client.patch(
+        f"/api/v1/agent/actions/{import_action['id']}/draft",
+        headers=auth(token),
+        json={"action": import_action},
+    )
+    assert updated.status_code == 200, updated.text
+    revised = updated.json()
+    _confirm(
+        client,
+        token,
+        import_action["id"],
+        revised["draft_version"],
+        _run_hash(client, token, import_action["id"]),
+    )
+    libraries = client.get("/api/v1/vocabularies?scope=mine", headers=auth(token)).json()
+    imported = next(item for item in libraries if item["name"] == "Agent Imported Edited")
+    assert len(imported["entries"]) == 2

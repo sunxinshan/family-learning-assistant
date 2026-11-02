@@ -134,6 +134,15 @@ class TaskService:
         task.updated_at = datetime.now(UTC)
         return task_to_out(task)
 
+    def validate_create(self, user_id: str, role: str, payload: TaskCreate) -> None:
+        library = self.vocabulary_service.get_accessible(payload.library_id, user_id, role)
+        selected_ids = set(payload.selected_entry_ids)
+        selected = [entry for entry in library.entries if entry.id in selected_ids]
+        if not selected:
+            raise AppError("no_entries_selected", "请至少选择一个词条")
+        if len(selected) != len(selected_ids):
+            raise AppError("invalid_entry_selection", "部分词条不属于该词库")
+
     def create(self, user_id: str, role: str, payload: TaskCreate) -> TaskOut:
         library = self.vocabulary_service.get_accessible(payload.library_id, user_id, role)
         selected_ids = set(payload.selected_entry_ids)
@@ -193,6 +202,15 @@ class TaskService:
         task.snapshot = snapshot
         self.repository.add(task)
         return task_to_out(task)
+
+    def validate_update(self, task_id: str, user_id: str, payload: TaskUpdate) -> None:
+        task = self._owned(task_id, user_id)
+        if task.task_mode == "fixed" and (
+            payload.words_per_group is not None
+            or payload.repeat_until_correct is not None
+            or payload.dictation is not None
+        ):
+            raise AppError("fixed_task_locked", "固定任务只能修改名称", status_code=409)
 
     def update(self, task_id: str, user_id: str, payload: TaskUpdate) -> TaskOut:
         task = self._owned(task_id, user_id)
