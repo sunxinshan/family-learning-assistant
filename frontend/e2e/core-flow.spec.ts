@@ -11,6 +11,15 @@ async function register(page: Page, nickname: string) {
   await page.waitForURL('http://127.0.0.1:5173/')
 }
 
+
+async function loginAsAdmin(page: Page) {
+  await page.goto('/login')
+  await page.getByLabel('昵称').fill('admin')
+  await page.getByLabel('密码').fill('admin213')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await page.waitForURL('http://127.0.0.1:5173/')
+}
+
 test('real HTTP flow: server import, agent confirmation, active restore, offline practice and learning', async ({
   page,
 }) => {
@@ -103,13 +112,11 @@ test('real HTTP flow: server import, agent confirmation, active restore, offline
 })
 
 test('admin sees two admin accounts and read-only learning stats', async ({ page }) => {
-  await page.goto('/login')
-  await page.getByRole('button', { name: /管理员 · Admin/ }).click()
-  await page.waitForURL('http://127.0.0.1:5173/')
+  await loginAsAdmin(page)
   await page.goto('/admin')
   await expect(page.getByText('管理员权限')).toBeVisible()
-  await expect(page.locator('tbody tr').filter({ hasText: 'Admin' }).first()).toBeVisible()
-  await expect(page.locator('tbody tr').filter({ hasText: 'Manager' }).first()).toBeVisible()
+  await expect(page.locator('tbody tr').filter({ hasText: 'admin' }).first()).toBeVisible()
+  await expect(page.locator('tbody tr').filter({ hasText: 'admin1' }).first()).toBeVisible()
   await page.getByRole('button', { name: '学习概况' }).first().click()
   await expect(page.getByText('管理员只读视图')).toBeVisible()
   await expect(page.getByText('管理员不能修改任务、答题结果或掌握状态')).toBeVisible()
@@ -224,9 +231,7 @@ test('deleting one entry only removes that entry and cancelling import is clean'
 test('admin can publish an admin-created personal vocabulary', async ({ page }) => {
   const suffix = uid()
   const libraryName = `Admin Public ${suffix}`
-  await page.goto('/login')
-  await page.getByRole('button', { name: /管理员 · Admin/ }).click()
-  await page.waitForURL('http://127.0.0.1:5173/')
+  await loginAsAdmin(page)
   await page.goto('/vocabulary/new')
   await page.locator('input[type=file]').setInputFiles({
     name: `${libraryName}.csv`,

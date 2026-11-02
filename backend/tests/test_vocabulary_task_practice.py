@@ -49,7 +49,7 @@ def create_library(client: TestClient, token: str) -> dict:
 
 def test_vocabulary_copy_is_independent(client: TestClient) -> None:
     alice = login(client, "Alice", "demo123")
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     public = client.post(
         "/api/v1/vocabularies",
         headers=auth(admin),

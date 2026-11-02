@@ -117,8 +117,8 @@ def test_import_isolation(client: TestClient) -> None:
 
 def test_admin_user_management_and_logs(client: TestClient) -> None:
     alice = login(client, "Alice", "demo123")
-    admin = login(client, "Admin", "admin123")
-    manager = login(client, "Manager", "manager123")
+    admin = login(client, "admin", "admin213")
+    manager = login(client, "admin1", "admin222")
 
     assert client.get("/api/v1/admin/users", headers=auth(alice)).status_code == 403
     assert client.get("/api/v1/admin/logs", headers=auth(alice)).status_code == 403
@@ -126,7 +126,7 @@ def test_admin_user_management_and_logs(client: TestClient) -> None:
     users = client.get("/api/v1/admin/users", headers=auth(admin))
     assert users.status_code == 200
     admin_users = [item for item in users.json() if item["role"] == "admin"]
-    assert {item["nickname"] for item in admin_users} >= {"Admin", "Manager"}
+    assert {item["nickname"] for item in admin_users} >= {"admin", "admin1"}
     bob = next(item for item in users.json() if item["nickname"] == "Bob")
 
     disabled = client.patch(
@@ -166,7 +166,7 @@ def test_admin_user_management_and_logs(client: TestClient) -> None:
 
 def test_admin_cannot_modify_another_users_task(client: TestClient) -> None:
     alice = login(client, "Alice", "demo123")
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     library = client.post(
         "/api/v1/vocabularies",
         headers=auth(alice),
@@ -205,7 +205,7 @@ def test_admin_cannot_modify_another_users_task(client: TestClient) -> None:
 
 
 def test_admin_can_read_user_learning_stats_but_not_user_tasks(client: TestClient) -> None:
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     users = client.get("/api/v1/admin/users", headers=auth(admin)).json()
     bob = next(item for item in users if item["nickname"] == "Bob")
     stats = client.get(f"/api/v1/admin/users/{bob['id']}/learning-stats", headers=auth(admin))
@@ -236,7 +236,7 @@ def test_english_and_chinese_templates_have_different_headers(client: TestClient
 
 
 def test_admin_can_publish_own_private_vocabulary(client: TestClient) -> None:
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     created = client.post(
         "/api/v1/vocabularies",
         headers=auth(admin),

@@ -75,7 +75,7 @@ def test_user_cannot_access_other_users_task(client: TestClient) -> None:
 
 def test_admin_cannot_modify_user_task(client: TestClient) -> None:
     alice = login(client, "Alice", "demo123")
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     users = client.get("/api/v1/admin/users", headers=auth(admin["access_token"]))
     assert users.status_code == 200
     assert len(users.json()) >= 2

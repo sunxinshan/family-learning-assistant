@@ -20,8 +20,8 @@ def seed_demo(database: Database) -> None:
         for nickname, password, role in (
             ("Alice", "demo123", "user"),
             ("Bob", "demo123", "user"),
-            ("Admin", "admin123", "admin"),
-            ("Manager", "manager123", "admin"),
+            ("admin", "admin213", "admin"),
+            ("admin1", "admin222", "admin"),
         ):
             user = session.scalar(select(User).where(User.nickname == nickname))
             if not user:

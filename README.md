@@ -29,8 +29,8 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 - 普通用户：`Alice` / `demo123`
 - 普通用户：`Bob` / `demo123`
-- 管理员：`Admin` / `admin123`
-- 管理员：`Manager` / `manager123`
+- 管理员：`admin` / `admin213`
+- 管理员：`admin1` / `admin222`
 
 ## 验证
 
@@ -46,7 +46,7 @@ npm run test:e2e
 npm audit --audit-level=high
 ```
 
-当前记录：后端 66 passed、桌面+移动 E2E 20 passed、MySQL 8.4.7 全量通过。
+当前记录：后端 68 passed、桌面+移动 E2E 20 passed、MySQL 8.4.7 全量通过。
 
 ## 文档
 

@@ -49,7 +49,7 @@ def test_refresh_rotation_reuse_and_logout(client: TestClient) -> None:
 def test_invalid_and_disabled_tokens_are_rejected(client: TestClient) -> None:
     assert client.get("/api/v1/users/me", headers=auth("not-a-jwt")).status_code == 401
     bob = login(client, "Bob", "demo123")
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     users = client.get("/api/v1/admin/users", headers=auth(admin["access_token"])).json()
     bob_id = next(item["id"] for item in users if item["nickname"] == "Bob")
     assert (

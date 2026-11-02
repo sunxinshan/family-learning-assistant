@@ -15,6 +15,7 @@ class PracticeAttempt(IdMixin, Base):
     )
     user_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    attempt_no: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     kind: Mapped[str] = mapped_column(String(20), default="regular", nullable=False)
     target_entry_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="in_progress", nullable=False)

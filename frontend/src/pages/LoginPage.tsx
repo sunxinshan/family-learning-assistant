@@ -1,11 +1,8 @@
 import {
-  ArrowRight,
   BookOpenText,
   CheckCircle2,
   KeyRound,
-  ShieldCheck,
   Sparkles,
-  UserRound,
 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
@@ -16,8 +13,8 @@ export const LoginPage = () => {
   const { currentUser, login, register } = useAppStore()
   const navigate = useNavigate()
   const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [nickname, setNickname] = useState('Alice')
-  const [password, setPassword] = useState('demo123')
+  const [nickname, setNickname] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -41,18 +38,7 @@ export const LoginPage = () => {
     }
   }
 
-  const demoLogin = async (demoNickname: string, demoPassword: string) => {
-    setBusy(true)
-    setError('')
-    try {
-      await login(demoNickname, demoPassword)
-      navigate('/', { replace: true })
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '演示登录失败')
-    } finally {
-      setBusy(false)
-    }
-  }
+
 
 
 
@@ -103,8 +89,8 @@ export const LoginPage = () => {
             </div>
           </div>
           <div className="login-heading">
-            <h2>{mode === 'login' ? '登录你的学习空间' : '创建演示账户'}</h2>
-            <p>{mode === 'login' ? '继续与学习助手协作，或从下方使用预置账户。' : '账户数据由后端安全保存，密码不会返回前端。'}</p>
+            <h2>{mode === 'login' ? '登录你的学习空间' : '创建账户'}</h2>
+            <p>{mode === 'login' ? '继续与学习助手协作。' : '账户数据由后端安全保存，密码不会返回前端。'}</p>
           </div>
 
           <form className="login-form" onSubmit={(event) => void submit(event)}>
@@ -146,34 +132,6 @@ export const LoginPage = () => {
             {mode === 'login' ? '没有账户？创建账户' : '已有账户？返回登录'}
           </button>
 
-          <div className="login-divider"><span>或使用预置账户</span></div>
-
-          <div className="demo-login-grid">
-            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('Alice', 'demo123')}>
-              <span className="demo-login-icon"><UserRound size={18} /></span>
-              <span>
-                <strong>普通用户</strong>
-                <small>Alice · 听写与学习记录</small>
-              </span>
-              <ArrowRight size={15} />
-            </button>
-            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('Admin', 'admin123')}>
-              <span className="demo-login-icon"><ShieldCheck size={18} /></span>
-              <span>
-                <strong>管理员 · Admin</strong>
-                <small>公共词库、用户与执行详情管理</small>
-              </span>
-              <ArrowRight size={15} />
-            </button>
-            <button type="button" className="demo-login-card" disabled={busy} onClick={() => void demoLogin('Manager', 'manager123')}>
-              <span className="demo-login-icon"><ShieldCheck size={18} /></span>
-              <span>
-                <strong>管理员 · Manager</strong>
-                <small>第二个管理员演示账号</small>
-              </span>
-              <ArrowRight size={15} />
-            </button>
-          </div>
 
         </div>
       </section>

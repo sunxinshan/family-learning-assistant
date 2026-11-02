@@ -108,7 +108,7 @@ def test_tool_registry_permission_filtering(client: TestClient, app: FastAPI) ->
 
 def test_execution_details_are_redacted_and_admin_visible(client: TestClient) -> None:
     alice = login(client)
-    admin = login(client, "Admin", "admin123")
+    admin = login(client, "admin", "admin213")
     bob = login(client, "Bob", "demo123")
     library = client.post(
         "/api/v1/vocabularies",
