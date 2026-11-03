@@ -14,24 +14,30 @@ class AgentRepository:
         return self.session.get(AgentRun, run_id)
 
     def get_active_for_user(self, user_id: str) -> AgentRun | None:
-        return self.session.scalar(
-            select(AgentRun)
+        # 只选主键再回表：pending_action_json 可能有数百 KB，
+        # 直接排序整行会顶爆 MySQL 的 sort_buffer_size（1038 Out of sort memory）。
+        run_id = self.session.scalar(
+            select(AgentRun.id)
             .where(
                 AgentRun.user_id == user_id,
                 AgentRun.status.in_(["running", "waiting_confirmation"]),
             )
             .order_by(AgentRun.created_at.desc())
+            .limit(1)
         )
+        return self.session.get(AgentRun, run_id) if run_id else None
 
     def get_active_for_conversation(self, conversation_id: str) -> AgentRun | None:
-        return self.session.scalar(
-            select(AgentRun)
+        run_id = self.session.scalar(
+            select(AgentRun.id)
             .where(
                 AgentRun.conversation_id == conversation_id,
                 AgentRun.status.in_(["running", "waiting_confirmation"]),
             )
             .order_by(AgentRun.created_at.desc())
+            .limit(1)
         )
+        return self.session.get(AgentRun, run_id) if run_id else None
 
     def add_run(self, run: AgentRun) -> AgentRun:
         self.session.add(run)
@@ -44,9 +50,10 @@ class AgentRepository:
         return event
 
     def list_events(self, run_id: str, after_sequence: int = 0) -> list[AgentRunEvent]:
-        return list(
+        # 同上：先按 sequence 只取主键排序，再回表，避免事件里的大 payload 参与排序。
+        ids = list(
             self.session.scalars(
-                select(AgentRunEvent)
+                select(AgentRunEvent.id)
                 .where(
                     AgentRunEvent.run_id == run_id,
                     AgentRunEvent.sequence > after_sequence,
@@ -54,6 +61,13 @@ class AgentRepository:
                 .order_by(AgentRunEvent.sequence)
             )
         )
+        if not ids:
+            return []
+        rows = {
+            event.id: event
+            for event in self.session.scalars(select(AgentRunEvent).where(AgentRunEvent.id.in_(ids)))
+        }
+        return [rows[event_id] for event_id in ids if event_id in rows]
 
     def next_sequence(self, run_id: str) -> int:
         last = self.session.scalar(
