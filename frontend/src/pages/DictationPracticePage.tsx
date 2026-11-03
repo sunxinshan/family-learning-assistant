@@ -32,6 +32,7 @@ const defaultDictationConfig: DictationConfig = {
   intervalSeconds: 8,
   hint: 'phonetic',
   repeatCount: 1,
+  speechEnabled: true,
 }
 
 /** 线上听写答对后停留多久再自动进入下一题（毫秒） */
@@ -47,6 +48,7 @@ export const DictationPracticePage = () => {
   const taskDetailsReady = task?.snapshotIncluded !== false
   const config = task?.config.dictation ?? defaultDictationConfig
   const isOffline = config.mode === 'offline'
+  const speechEnabled = config.speechEnabled !== false
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [offlineIndex, setOfflineIndex] = useState(0)
@@ -101,6 +103,9 @@ export const DictationPracticePage = () => {
       ? `错题复习 · 第 ${currentGroupIndex} 组`
       : '错题复习'
     : undefined
+  const answeredWrong = Boolean(feedback && !feedback.correct)
+  // 英语听写的音标等于把答案拆成音节摆出来，只在答错后揭示；语文拼音不是答案本身，始终显示。
+  const showPhonetic = task?.subject === 'chinese' || answeredWrong
 
   useEffect(() => {
     if (!taskId || !currentUser) {
@@ -209,7 +214,7 @@ export const DictationPracticePage = () => {
       setCountdown(null)
       return
     }
-    if (autoPaused) {
+    if (!speechEnabled || autoPaused) {
       setCountdown(null)
       return
     }
@@ -249,6 +254,7 @@ export const DictationPracticePage = () => {
     practiceEntries.length,
     showResults,
     speakEntry,
+    speechEnabled,
     task?.id,
   ])
 
@@ -258,7 +264,7 @@ export const DictationPracticePage = () => {
       setCountdown(null)
       return
     }
-    if (autoPaused) {
+    if (!speechEnabled || autoPaused) {
       setCountdown(null)
       return
     }
@@ -294,6 +300,7 @@ export const DictationPracticePage = () => {
     practiceEntries.length,
     showResults,
     speakEntry,
+    speechEnabled,
     task?.id,
   ])
 
@@ -524,55 +531,68 @@ export const DictationPracticePage = () => {
         <section className="dictation-practice-card">
           <div className="practice-question-meta">
             <Badge>线下听写</Badge>
-            <span>在纸上完成听写，全部播放后进入自查核对。</span>
+            <span>
+              {speechEnabled ? '在纸上完成听写，全部播放后进入自查核对。' : '不朗读模式：按页面提示自行默写，完成后进入自查核对。'}
+            </span>
           </div>
           <div className="offline-dictation-progress">
             <span>当前第 {offlineIndex + 1} / {practiceEntries.length} 个词</span>
-            <Badge tone={config.playbackMode === 'auto' ? 'info' : 'neutral'}>
-              {config.playbackMode === 'auto'
-                ? `自动播放 · ${config.intervalSeconds} 秒 · 朗读 ${config.repeatCount} 次`
-                : `手动播放 · 朗读 ${config.repeatCount} 次`}
+            <Badge tone={speechEnabled && config.playbackMode === 'auto' ? 'info' : 'neutral'}>
+              {!speechEnabled
+                ? '不朗读'
+                : config.playbackMode === 'auto'
+                  ? `自动播放 · ${config.intervalSeconds} 秒 · 朗读 ${config.repeatCount} 次`
+                  : `手动播放 · 朗读 ${config.repeatCount} 次`}
             </Badge>
           </div>
-          <div className="dictation-audio-area offline-audio-area">
-            <button
-              type="button"
-              className={`audio-play-button ${playing ? 'is-playing' : ''}`}
-              onClick={() => offlineEntry && speakEntry(offlineEntry)}
-            >
-              {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
-            </button>
-            <div>
-              <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
-              <p>播放内容不会在页面直接显示，请根据提示在纸上书写。</p>
+          {speechEnabled ? (
+            <div className="dictation-audio-area offline-audio-area">
+              <button
+                type="button"
+                className={`audio-play-button ${playing ? 'is-playing' : ''}`}
+                onClick={() => offlineEntry && speakEntry(offlineEntry)}
+              >
+                {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
+              </button>
+              <div>
+                <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
+                <p>播放内容不会在页面直接显示，请根据提示在纸上书写。</p>
+              </div>
+              <Button
+                size="sm"
+                icon={RotateCcw}
+                onClick={() => offlineEntry && speakEntry(offlineEntry)}
+              >
+                重播
+              </Button>
             </div>
-            <Button
-              size="sm"
-              icon={RotateCcw}
-              onClick={() => offlineEntry && speakEntry(offlineEntry)}
-            >
-              重播
-            </Button>
-          </div>
+          ) : null}
           <div className="dictation-hint-card">
             <span>
-              朗读内容：
-              {task.subject === 'chinese'
-                ? '词语发音（直接读出）'
-                : config.hint === 'phonetic' ? '英语单词' : '中文含义'}
+              {speechEnabled
+                ? `朗读内容：${
+                    task.subject === 'chinese'
+                      ? '词语发音（直接读出）'
+                      : config.hint === 'phonetic'
+                        ? '英语单词'
+                        : '中文含义'
+                  }`
+                : '页面提示'}
             </span>
-            <div className="dictation-hint-values">
-              <div>
-                <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
-                <strong>{offlineEntry?.phonetic || '暂无'}</strong>
-              </div>
+            <div className={`dictation-hint-values ${showPhonetic ? '' : 'is-single'}`}>
+              {showPhonetic ? (
+                <div>
+                  <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
+                  <strong>{offlineEntry?.phonetic || '暂无'}</strong>
+                </div>
+              ) : null}
               <div>
                 <small>中文含义</small>
                 <strong>{offlineEntry?.meanings.join('；') || '暂无'}</strong>
               </div>
             </div>
           </div>
-          {config.playbackMode === 'auto' ? (
+          {speechEnabled && config.playbackMode === 'auto' ? (
             <div className={`auto-play-countdown ${autoPaused ? 'is-paused' : ''}`}>
               {autoPaused ? <Pause size={15} /> : <Clock3 size={15} />}
               <span>
@@ -650,7 +670,6 @@ export const DictationPracticePage = () => {
       }, isWrongPractice ? 'wrong' : 'regular')
       setAttempt(result.attempt)
       setFeedback({ given: answer.trim(), correct: result.isCorrect })
-      refresh()
       // 线上听写答对即自动继续；答错停在原地看正确答案再手动继续。
       clearAutoAdvance()
       if (result.isCorrect) {
@@ -699,35 +718,46 @@ export const DictationPracticePage = () => {
             线上听写
           </Badge>
           <span>
-            {config.playbackMode === 'auto'
-              ? `自动播放 · 每 ${config.intervalSeconds} 秒进入下一个词 · 每次朗读 ${config.repeatCount} 次`
-              : `手动播放 · 进入词语自动朗读 ${config.repeatCount} 次`}
+            {!speechEnabled
+              ? '不朗读 · 按提示自行拼写'
+              : config.playbackMode === 'auto'
+                ? `自动播放 · 每 ${config.intervalSeconds} 秒进入下一个词 · 每次朗读 ${config.repeatCount} 次`
+                : `手动播放 · 进入词语自动朗读 ${config.repeatCount} 次`}
           </span>
         </div>
 
-        <div className="dictation-audio-area">
-          <button type="button" className={`audio-play-button ${playing ? 'is-playing' : ''}`} onClick={() => speakEntry(entry)}>
-            {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
-          </button>
-          <div>
-            <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
-            <p>按任务设置朗读单词或中文含义，页面同时显示音标和中文含义</p>
+        {speechEnabled ? (
+          <div className="dictation-audio-area">
+            <button type="button" className={`audio-play-button ${playing ? 'is-playing' : ''}`} onClick={() => speakEntry(entry)}>
+              {playing ? <Volume2 size={30} /> : <Play size={30} fill="currentColor" />}
+            </button>
+            <div>
+              <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
+              <p>按任务设置朗读单词或中文含义，页面同时显示音标和中文含义</p>
+            </div>
+            <Button size="sm" icon={RotateCcw} onClick={() => speakEntry(entry)}>重播</Button>
           </div>
-          <Button size="sm" icon={RotateCcw} onClick={() => speakEntry(entry)}>重播</Button>
-        </div>
+        ) : null}
 
         <div className="dictation-hint-card">
           <span>
-            朗读内容：
-            {config.hint === 'phonetic'
-              ? task.subject === 'english' ? '英语单词' : '语文拼音'
-              : '中文含义'}
+            {speechEnabled
+              ? `朗读内容：${
+                  config.hint === 'phonetic'
+                    ? task.subject === 'english'
+                      ? '英语单词'
+                      : '语文拼音'
+                    : '中文含义'
+                }`
+              : '页面提示'}
           </span>
-          <div className="dictation-hint-values">
-            <div>
-              <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
-              <strong>{entry.phonetic || '暂无'}</strong>
-            </div>
+          <div className={`dictation-hint-values ${showPhonetic ? '' : 'is-single'}`}>
+            {showPhonetic ? (
+              <div>
+                <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
+                <strong>{entry.phonetic || '暂无'}</strong>
+              </div>
+            ) : null}
             <div>
               <small>中文含义</small>
               <strong>{entry.meanings.join('；') || '暂无'}</strong>
@@ -735,7 +765,7 @@ export const DictationPracticePage = () => {
           </div>
         </div>
 
-        {config.playbackMode === 'auto' ? (
+        {speechEnabled && config.playbackMode === 'auto' ? (
           <div className={`auto-play-countdown ${autoPaused ? 'is-paused' : ''}`}>
             {autoPaused ? <Pause size={15} /> : <Clock3 size={15} />}
             <span>
@@ -752,7 +782,9 @@ export const DictationPracticePage = () => {
         ) : null}
 
         <div className="dictation-answer-area">
-          <label htmlFor="dictation-answer">输入你听到的词语</label>
+          <label htmlFor="dictation-answer">
+            {speechEnabled ? '输入你听到的词语' : '输入这个词的拼写'}
+          </label>
           <input
             id="dictation-answer"
             ref={answerInputRef}
@@ -765,7 +797,6 @@ export const DictationPracticePage = () => {
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder={task.subject === 'chinese' ? '输入汉字…' : 'Type the word…'}
             autoFocus
           />
         </div>
@@ -779,9 +810,20 @@ export const DictationPracticePage = () => {
             <div className="dictation-answer-reveal">
               <span>正确答案</span>
               <strong>{entry.word}</strong>
-              <small>{entry.phonetic} · {entry.meanings.join('；')}</small>
+              <small>
+                {showPhonetic ? `${entry.phonetic} · ` : ''}
+                {entry.meanings.join('；')}
+              </small>
             </div>
-            {!feedback.correct ? <p>你的答案：{feedback.given}</p> : null}
+            {!feedback.correct ? (
+              <div className="feedback-answer-row">
+                <p>你的答案：{feedback.given}</p>
+                {/* 英语答错后才给出音标，此时也允许直接听一遍正确读音。 */}
+                <Button size="sm" icon={Volume2} onClick={() => speakEntry(entry)}>
+                  朗读
+                </Button>
+              </div>
+            ) : null}
             <blockquote>
               {entry.example}
               <small>{entry.exampleTranslation}</small>

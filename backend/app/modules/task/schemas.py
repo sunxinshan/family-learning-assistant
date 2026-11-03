@@ -12,6 +12,8 @@ class DictationConfig(CamelModel):
     interval_seconds: int = Field(default=8, ge=2, le=60)
     hint: Literal["phonetic", "meaning"] = "phonetic"
     repeat_count: int = Field(default=2, ge=1, le=5)
+    # 关闭后练习页不自动朗读，也不显示常驻的播放控件，只在答错时提供朗读。
+    speech_enabled: bool = True
 
 
 class TaskCreate(CamelModel):

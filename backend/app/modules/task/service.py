@@ -108,6 +108,37 @@ class TaskService:
     def get(self, task_id: str, user_id: str) -> TaskOut:
         return task_to_out(self._owned(task_id, user_id))
 
+    def get_practice_metadata(self, task_id: str, user_id: str) -> LearningTask:
+        task = self.repository.get_metadata(task_id)
+        if not task:
+            raise AppError("task_not_found", "任务不存在", status_code=404)
+        if task.user_id != user_id:
+            raise AppError("forbidden", "你无权访问该任务", status_code=403)
+        return task
+
+    def get_practice_entry(
+        self,
+        task_id: str,
+        *,
+        sequence_no: int | None = None,
+        entry_id: str | None = None,
+    ) -> PracticeEntry:
+        entry = self.repository.get_snapshot_entry(
+            task_id, sequence_no=sequence_no, entry_id=entry_id
+        )
+        if not entry:
+            raise AppError("question_not_found", "当前题目不存在", status_code=404)
+        return PracticeEntry(
+            id=entry.id,
+            source_entry_id=entry.source_entry_id,
+            sequence_no=entry.sequence_no,
+            word=entry.word,
+            phonetic=entry.phonetic,
+            meanings=list(entry.meanings),
+            example=entry.example,
+            example_translation=entry.example_translation,
+        )
+
     def get_practice_definition(self, task_id: str, user_id: str) -> TaskPracticeDefinition:
         task = self._owned(task_id, user_id)
         return TaskPracticeDefinition(
@@ -134,14 +165,10 @@ class TaskService:
             ],
         )
 
-    def set_progress(self, task_id: str, progress: int) -> TaskOut:
-        task = self.repository.get(task_id)
-        if not task:
-            raise AppError("task_not_found", "任务不存在", status_code=404)
+    def set_progress(self, task: LearningTask, progress: int) -> None:
         task.progress = max(task.progress, max(0, min(progress, 100)))
         task.status = "completed" if task.progress >= 100 else "in_progress"
         task.updated_at = datetime.now(UTC)
-        return task_to_out(task)
 
     def validate_create(self, user_id: str, role: str, payload: TaskCreate) -> None:
         library = self.vocabulary_service.get_accessible(payload.library_id, user_id, role)

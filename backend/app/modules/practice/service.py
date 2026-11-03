@@ -226,13 +226,12 @@ class PracticeService:
             review_intervals=self.settings.review_intervals_days,
         )
 
-    def _recalculate_progress(self, task_id: str, user_id: str) -> None:
-        definition = self.task_service.get_practice_definition(task_id, user_id)
-        answers = self.repository.answers_for_task(task_id, user_id)
-        if definition.mode == "fixed":
-            attempted = {answer.snapshot_entry_id for answer in answers}
-            progress = round(len(attempted) / max(definition.target_count, 1) * 100)
+    def _recalculate_progress(self, task, user_id: str) -> None:
+        if task.task_mode == "fixed":
+            attempted = self.repository.count_attempted_entries(task.id, user_id)
+            progress = round(attempted / max(task.target_count, 1) * 100)
         else:
+            answers = self.repository.answers_for_task(task.id, user_id)
             streaks: dict[str, int] = {}
             for answer in answers:
                 streaks[answer.snapshot_entry_id] = (
@@ -241,8 +240,8 @@ class PracticeService:
             mastered = sum(
                 1 for value in streaks.values() if value >= self.settings.mastery_threshold
             )
-            progress = round(mastered / max(definition.target_count, 1) * 100)
-        self.task_service.set_progress(task_id, progress)
+            progress = round(mastered / max(task.target_count, 1) * 100)
+        self.task_service.set_progress(task, progress)
 
     def submit_answer(self, attempt_id: str, user_id: str, payload: AnswerSubmit) -> AttemptOut:
         attempt = self._owned_attempt(attempt_id, user_id)
@@ -250,13 +249,18 @@ class PracticeService:
             raise AppError("attempt_completed", "本次练习已经完成", status_code=409)
         if attempt.current_index >= attempt.total:
             raise AppError("attempt_completed", "本次练习已经完成", status_code=409)
-        definition = self.task_service.get_practice_definition(attempt.task_id, user_id)
-        entries = self._attempt_entries(attempt, definition)
-        if attempt.current_index >= len(entries):
-            raise AppError("question_not_found", "当前题目不存在", status_code=404)
-        entry = entries[attempt.current_index]
+        task = self.task_service.get_practice_metadata(attempt.task_id, user_id)
+        target_entry_id = None
+        if attempt.kind == "wrong":
+            targets = list(attempt.target_entry_ids or [])
+            target_entry_id = targets[attempt.current_index]
+        entry = self.task_service.get_practice_entry(
+            task.id,
+            sequence_no=None if target_entry_id else attempt.current_index + 1,
+            entry_id=target_entry_id,
+        )
         question = self.question_service.create_dictation_question(
-            subject=definition.subject,
+            subject=task.subject,
             word=entry.word,
             phonetic=entry.phonetic,
             meanings=entry.meanings,
@@ -290,7 +294,7 @@ class PracticeService:
             attempt.status = "completed"
             attempt.completed_at = now
         self.repository.session.flush()
-        self._recalculate_progress(attempt.task_id, user_id)
+        self._recalculate_progress(task, user_id)
         return attempt_to_out(attempt)
 
     def submit_self_check(
@@ -345,5 +349,6 @@ class PracticeService:
         attempt.completed_at = now
         attempt.updated_at = now
         self.repository.session.flush()
-        self._recalculate_progress(attempt.task_id, user_id)
+        task = self.task_service.get_practice_metadata(attempt.task_id, user_id)
+        self._recalculate_progress(task, user_id)
         return attempt_to_out(attempt)

@@ -555,8 +555,7 @@ export const httpApi = {
         body: JSON.stringify({ given: input.given, durationMs: input.durationMs }),
       })
       const cached = cacheAttempt(attempt)
-      await httpApi.task.refreshOne(taskId)
-      await refreshStats()
+      void refreshStats().catch(() => undefined)
       notifyDataChanged()
       const answer = attempt.answers.at(-1)
       return {

@@ -54,6 +54,8 @@ export interface DictationConfig {
   intervalSeconds: number
   hint: DictationHint
   repeatCount: number
+  /** 关闭后练习页不自动朗读，只在答错时提供朗读入口。 */
+  speechEnabled?: boolean
 }
 
 export interface TaskConfig {

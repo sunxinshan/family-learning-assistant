@@ -2996,6 +2996,24 @@ ol {
   font-size: 11px;
 }
 
+/* 答错后的“你的答案 + 朗读单词”一行：文字靠左，朗读按钮贴右。 */
+.feedback-answer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+}
+
+.feedback-answer-row p {
+  color: var(--color-text);
+  font-size: 11px;
+}
+
+.feedback-answer-row .button {
+  flex: none;
+}
+
 .answer-feedback blockquote {
   padding: 10px 12px;
   margin-top: 11px;
@@ -5987,6 +6005,11 @@ ol {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   flex: 1;
+}
+
+/* 英语答题时只有“中文含义”一列，避免右半边留空。 */
+.dictation-hint-values.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .dictation-hint-values > div {

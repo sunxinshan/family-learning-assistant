@@ -69,3 +69,16 @@ class PracticeRepository:
                 )
             )
         )
+
+    def count_attempted_entries(self, task_id: str, user_id: str) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count(func.distinct(PracticeAnswer.snapshot_entry_id)))
+                .join(PracticeAttempt, PracticeAttempt.id == PracticeAnswer.attempt_id)
+                .where(
+                    PracticeAttempt.task_id == task_id,
+                    PracticeAttempt.user_id == user_id,
+                )
+            )
+            or 0
+        )

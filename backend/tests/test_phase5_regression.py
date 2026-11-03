@@ -306,3 +306,34 @@ def test_task_mode_can_be_changed_without_replacing_snapshot(client: TestClient)
     assert fixed_again.status_code == 200, fixed_again.text
     assert fixed_again.json()["mode"] == "fixed"
     assert fixed_again.json()["config"]["totalGroups"] == 1
+
+
+def test_dictation_speech_can_be_disabled(client: TestClient) -> None:
+    """听写任务可以关闭朗读，关闭后配置随任务保存并返回。"""
+    token = login(client)
+    library = create_library(client, token, name="No Speech Library")
+    task = create_task(client, token, library, mode="long_term")
+    # 未显式配置时默认朗读开启，旧任务补齐字段后行为不变。
+    assert task["config"]["dictation"]["speechEnabled"] is True
+
+    disabled = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        headers=auth(token),
+        json={
+            "name": "No Speech Task",
+            "dictation": {
+                "mode": "online",
+                "playbackMode": "manual",
+                "intervalSeconds": 8,
+                "hint": "phonetic",
+                "repeatCount": 2,
+                "speechEnabled": False,
+            },
+        },
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["config"]["dictation"]["speechEnabled"] is False
+
+    refreshed = client.get(f"/api/v1/tasks/{task['id']}", headers=auth(token))
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["config"]["dictation"]["speechEnabled"] is False

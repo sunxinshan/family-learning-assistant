@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session, raiseload, selectinload
 
-from app.modules.task.models import LearningTask, TaskSnapshot
+from app.modules.task.models import LearningTask, TaskSnapshot, TaskSnapshotEntry
 
 
 class TaskRepository:
@@ -15,6 +15,29 @@ class TaskRepository:
 
     def get(self, task_id: str) -> LearningTask | None:
         return self.session.scalar(self._query().where(LearningTask.id == task_id))
+
+    def get_metadata(self, task_id: str) -> LearningTask | None:
+        return self.session.scalar(
+            select(LearningTask)
+            .options(raiseload(LearningTask.snapshot))
+            .where(LearningTask.id == task_id)
+        )
+
+    def get_snapshot_entry(
+        self, task_id: str, *, sequence_no: int | None = None, entry_id: str | None = None
+    ):
+        query = (
+            select(TaskSnapshotEntry)
+            .join(TaskSnapshot, TaskSnapshot.id == TaskSnapshotEntry.snapshot_id)
+            .where(TaskSnapshot.task_id == task_id)
+        )
+        if entry_id is not None:
+            query = query.where(TaskSnapshotEntry.id == entry_id)
+        elif sequence_no is not None:
+            query = query.where(TaskSnapshotEntry.sequence_no == sequence_no)
+        else:
+            return None
+        return self.session.scalar(query)
 
     def list_for_user(self, user_id: str, include_snapshot: bool = True) -> list[LearningTask]:
         query = select(LearningTask)

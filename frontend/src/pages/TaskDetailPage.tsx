@@ -84,6 +84,9 @@ export const TaskDetailPage = () => {
   )
   const [repeatCount, setRepeatCount] = useState(task?.config.dictation?.repeatCount ?? 1)
   const [hint, setHint] = useState<DictationHint>(task?.config.dictation?.hint ?? 'phonetic')
+  const [speechEnabled, setSpeechEnabled] = useState(
+    task?.config.dictation?.speechEnabled !== false,
+  )
   const [wrongQuestions, setWrongQuestions] = useState<WrongQuestions | null>(null)
   const [wrongQuestionsLoading, setWrongQuestionsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -182,6 +185,7 @@ export const TaskDetailPage = () => {
     setIntervalSeconds(task.config.dictation?.intervalSeconds ?? 8)
     setRepeatCount(task.config.dictation?.repeatCount ?? 1)
     setHint(task.config.dictation?.hint ?? 'phonetic')
+    setSpeechEnabled(task.config.dictation?.speechEnabled !== false)
     setError('')
     setEditOpen(true)
   }
@@ -213,6 +217,7 @@ export const TaskDetailPage = () => {
             intervalSeconds,
             repeatCount,
             hint,
+            speechEnabled,
           },
         },
       })
@@ -421,16 +426,20 @@ export const TaskDetailPage = () => {
                     </dd>
                   </div>
                   <div>
-                    <dt>朗读时显示</dt>
+                    <dt>朗读</dt>
                     <dd>
-                      {task.config.dictation.hint === 'phonetic'
-                        ? task.subject === 'english' ? '英语音标' : '语文拼音'
-                        : '中文释义'}
+                      {(task.config.dictation.speechEnabled ?? true)
+                        ? `开启 · 每次 ${task.config.dictation.repeatCount ?? 1} 次`
+                        : '关闭 · 答错时可听'}
                     </dd>
                   </div>
                   <div>
-                    <dt>朗读次数</dt>
-                    <dd>{task.config.dictation.repeatCount ?? 1} 次</dd>
+                    <dt>朗读内容</dt>
+                    <dd>
+                      {task.config.dictation.hint === 'phonetic'
+                        ? task.subject === 'english' ? '英语单词' : '语文拼音'
+                        : '中文释义'}
+                    </dd>
                   </div>
                 </>
               ) : null}
@@ -582,6 +591,11 @@ export const TaskDetailPage = () => {
               />
             </div>
           </details>
+          <Checkbox
+            checked={speechEnabled}
+            onChange={setSpeechEnabled}
+            label="开启朗读：练习时自动读出词语；关闭后练习页不发声，只在答错时提供朗读按钮"
+          />
           <div className="form-grid-two">
             <Field label="听写方式">
               <SelectInput
@@ -595,6 +609,7 @@ export const TaskDetailPage = () => {
             <Field label="播放方式">
               <SelectInput
                 value={playbackMode}
+                disabled={!speechEnabled}
                 onChange={(event) => setPlaybackMode(event.target.value as PlaybackMode)}
               >
                 <option value="manual">手动播放</option>
@@ -609,7 +624,7 @@ export const TaskDetailPage = () => {
                 min={2}
                 max={60}
                 value={intervalSeconds}
-                disabled={playbackMode !== 'auto'}
+                disabled={!speechEnabled || playbackMode !== 'auto'}
                 onChange={(event) => setIntervalSeconds(Number(event.target.value))}
               />
             </Field>
@@ -619,6 +634,7 @@ export const TaskDetailPage = () => {
                 min={1}
                 max={5}
                 value={repeatCount}
+                disabled={!speechEnabled}
                 onChange={(event) => setRepeatCount(Number(event.target.value))}
               />
             </Field>
@@ -626,7 +642,7 @@ export const TaskDetailPage = () => {
           <Field label="朗读内容">
             <SelectInput
               value={hint}
-              disabled={task.subject === 'chinese'}
+              disabled={!speechEnabled || task.subject === 'chinese'}
               onChange={(event) => setHint(event.target.value as DictationHint)}
             >
               <option value="phonetic">

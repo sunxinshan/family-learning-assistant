@@ -217,6 +217,7 @@ export const taskApi = {
                 intervalSeconds: 5,
                 hint: 'phonetic',
                 repeatCount: 1,
+                speechEnabled: true,
               },
             }
           : {}),

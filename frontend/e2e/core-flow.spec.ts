@@ -176,7 +176,8 @@ test('online dictation submits answers through the real practice API', async ({ 
   await page.getByRole('button', { name: '提交拼写' }).waitFor({ state: 'detached' }).catch(() => undefined)
   const answer = page.getByLabel('输入你听到的词语')
   await expect(answer).toBeVisible()
-  await expect(page.getByText('英语音标', { exact: true })).toBeVisible()
+  // 英语听写答题时不提示音标，答错后才揭示（见 dictation-speech-modes.spec.ts）。
+  await expect(page.getByText('英语音标', { exact: true })).toHaveCount(0)
   await expect(page.getByText('中文含义', { exact: true })).toBeVisible()
   await expect(page.getByText('第 1 / 1 组', { exact: true })).toBeVisible()
   await expect(page.getByText('第 1 / 2 个', { exact: true })).toBeVisible()

@@ -82,6 +82,7 @@ export const TaskCreatePage = () => {
     intervalSeconds: 8,
     repeatCount: 2,
     hint: 'phonetic' as DictationHint,
+    speechEnabled: true,
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -250,6 +251,7 @@ export const TaskCreatePage = () => {
                 intervalSeconds: form.playbackMode === 'auto' ? form.intervalSeconds : 8,
                 hint: form.hint,
                 repeatCount: Math.max(1, form.repeatCount),
+                speechEnabled: form.speechEnabled,
               },
             }
           : {}),
@@ -483,6 +485,11 @@ export const TaskCreatePage = () => {
                       <span>这些设置会随任务保存，并作用于听写练习页面。</span>
                     </div>
                   </div>
+                  <Checkbox
+                    checked={form.speechEnabled}
+                    onChange={(checked) => setForm({ ...form, speechEnabled: checked })}
+                    label="开启朗读：练习时自动读出词语；关闭后练习页不发声，只在答错时提供朗读按钮"
+                  />
                   <div className="form-grid-two">
                     <Field label="听写方式">
                       <SelectInput
@@ -498,6 +505,7 @@ export const TaskCreatePage = () => {
                     <Field label="播放方式">
                       <SelectInput
                         value={form.playbackMode}
+                        disabled={!form.speechEnabled}
                         onChange={(event) =>
                           setForm({ ...form, playbackMode: event.target.value as PlaybackMode })
                         }
@@ -508,7 +516,7 @@ export const TaskCreatePage = () => {
                     </Field>
                   </div>
                   <div className="form-grid-three">
-                    {form.playbackMode === 'auto' ? (
+                    {form.playbackMode === 'auto' && form.speechEnabled ? (
                       <Field label="自动播放间隔" hint="练习页面显示倒计时">
                         <TextInput
                           type="number"
@@ -526,6 +534,7 @@ export const TaskCreatePage = () => {
                         type="number"
                         min={1}
                         max={5}
+                        disabled={!form.speechEnabled}
                         value={form.repeatCount}
                         onChange={(event) =>
                           setForm({ ...form, repeatCount: Number(event.target.value) })
@@ -535,7 +544,7 @@ export const TaskCreatePage = () => {
                     <Field label="朗读内容">
                       <SelectInput
                         value={form.hint}
-                        disabled={selectedLibrary.subject === 'chinese'}
+                        disabled={!form.speechEnabled || selectedLibrary.subject === 'chinese'}
                         onChange={(event) =>
                           setForm({ ...form, hint: event.target.value as DictationHint })
                         }
@@ -588,9 +597,15 @@ export const TaskCreatePage = () => {
               {form.type === 'dictation' ? (
                 <>
                   <div><dt>听写方式</dt><dd>{form.dictationMode === 'online' ? '线上听写' : '线下听写'}</dd></div>
-                  <div><dt>播放方式</dt><dd>{form.playbackMode === 'auto' ? `自动 · ${form.intervalSeconds} 秒` : '手动'}</dd></div>
-                  <div><dt>朗读次数</dt><dd>{form.repeatCount} 次</dd></div>
-                  <div><dt>朗读内容</dt><dd>{selectedLibrary.subject === 'chinese' ? '词语发音（直接读出）' : form.hint === 'phonetic' ? '英语单词' : '中文释义'}</dd></div>
+                  <div><dt>朗读</dt><dd>{form.speechEnabled ? `开启 · 每次 ${form.repeatCount} 次` : '关闭'}</dd></div>
+                  {form.speechEnabled ? (
+                    <>
+                      <div><dt>播放方式</dt><dd>{form.playbackMode === 'auto' ? `自动 · ${form.intervalSeconds} 秒` : '手动'}</dd></div>
+                      <div><dt>朗读内容</dt><dd>{selectedLibrary.subject === 'chinese' ? '词语发音（直接读出）' : form.hint === 'phonetic' ? '英语单词' : '中文释义'}</dd></div>
+                    </>
+                  ) : (
+                    <div><dt>朗读内容</dt><dd>不朗读 · 错题时可听</dd></div>
+                  )}
                 </>
               ) : null}
               <div><dt>强制重做</dt><dd>{form.repeatUntilCorrect ? '开启' : '关闭'}</dd></div>
