@@ -33,10 +33,10 @@ async function stubSpeech(page: Page) {
   })
 }
 
-async function openStreakTask(page: Page, suffix: string) {
+async function openRepeatTask(page: Page, suffix: string) {
   await page.goto('/vocabulary/new')
   await page.locator('input[type=file]').setInputFiles({
-    name: `Streak Library ${suffix}.csv`,
+    name: `Repeat Library ${suffix}.csv`,
     mimeType: 'text/csv',
     buffer: Buffer.from('单词,音标,词性,词义\napple,/ˈæpl/,n.,苹果\nbook,/bʊk/,n.,书\n'),
   })
@@ -45,7 +45,7 @@ async function openStreakTask(page: Page, suffix: string) {
   await page.waitForURL(/\/vocabulary\/[0-9a-f-]{36}$/)
 
   await page.goto('/tasks/new')
-  await page.getByLabel('任务名称').fill(`Streak Task ${suffix}`)
+  await page.getByLabel('任务名称').fill(`Repeat Task ${suffix}`)
   await page.locator('.advanced-settings summary').click()
   await page.getByRole('button', { name: '全选' }).click()
   await page.getByRole('checkbox', { name: /强制重做/ }).check()
@@ -55,48 +55,68 @@ async function openStreakTask(page: Page, suffix: string) {
   await expect(page.getByLabel('输入你听到的词语')).toBeVisible()
 }
 
-test('a wrong word stays in the group until it is spelled twice in a row', async ({ page }) => {
+const roundLabel = (page: Page) => page.locator('.practice-group-strip strong').nth(2)
+
+test('a wrong word is replayed after the whole group has been answered once', async ({ page }) => {
   const suffix = uid()
   await stubSpeech(page)
-  await register(page, `Streak${suffix}`)
-  await openStreakTask(page, suffix)
+  await register(page, `Repeat${suffix}`)
+  await openRepeatTask(page, suffix)
 
   const input = page.getByLabel('输入你听到的词语')
-  const progress = page.locator('.practice-progress span').first()
-  await expect(progress).toHaveText('1 / 2')
+  // 第一轮第一个词：苹果。
+  await expect(page.getByText('苹果', { exact: true })).toBeVisible()
+  await expect(roundLabel(page)).toHaveText('第 1 轮')
 
-  // 1. 拼错：停在本词，出现在本组继续练的提示。
-  await input.fill('aple')
+  // 答对后自动进入下一个词，不在同一个词上反复。
+  await input.fill('apple')
+  await input.press('Enter')
+  await expect(page.getByText('拼写正确')).toBeVisible()
+  await expect(page.getByText('书', { exact: true })).toBeVisible({ timeout: 5000 })
+
+  // 第二个词答错：照样可以进入下一题，本轮结束后再重练。
+  await input.fill('buk')
   await input.press('Enter')
   await expect(page.getByText('拼写需要修正')).toBeVisible()
-  await expect(page.getByText('本词连续拼对 0/2 次，再拼对 2 次才能进入下一个词')).toBeVisible()
-  await expect(progress).toHaveText('1 / 2')
+  await expect(
+    page.getByText('这个词会留在本组，这一轮走完后重练，连对两次才过关'),
+  ).toBeVisible()
+  await expect(page.getByText('第 1 轮结束，本组还有 1 个错词要重练')).toBeVisible()
 
-  // 2. 第一次拼对：还不放行。
-  await page.getByRole('button', { name: '再拼一次' }).click()
-  await expect(input).toBeEnabled()
-  await input.fill('apple')
-  await input.press('Enter')
-  await expect(page.getByText('拼写正确 · 还要再拼一次')).toBeVisible()
-  await expect(progress).toHaveText('1 / 2')
+  await page.getByRole('button', { name: '下一题' }).click()
+  // 第二轮只练这一组里答错的词。
+  await expect(roundLabel(page)).toHaveText('第 2 轮')
+  await expect(page.getByText('书', { exact: true })).toBeVisible()
+  await expect(page.locator('.practice-progress span').first()).toHaveText('1 / 1')
 
-  // 3. 连续第二次拼对：才进入下一个词。
-  await page.getByRole('button', { name: '再拼一次' }).click()
-  await expect(input).toBeEnabled()
-  await input.fill('apple')
-  await input.press('Enter')
-  await expect(progress).toHaveText('2 / 2')
-
-  // 4. 第二个词同样要连对两次。
-  await expect(input).toBeEnabled()
+  // 第二轮拼对一次还不算过关，还要再来一轮。
   await input.fill('book')
   await input.press('Enter')
-  await expect(page.getByText('拼写正确 · 还要再拼一次')).toBeVisible()
-  await page.getByRole('button', { name: '再拼一次' }).click()
-  await expect(input).toBeEnabled()
+  await expect(page.getByText('这个词这轮拼对了，下一轮再对一次才过关')).toBeVisible()
+  await expect(roundLabel(page)).toHaveText('第 3 轮', { timeout: 5000 })
+
+  // 连续第二轮拼对：本组过关，整组练完给出结果。
+  await input.fill('book')
+  await input.press('Enter')
+  await expect(page.getByText('拼写正确')).toBeVisible()
+  await expect(page.getByText('听写结果已保存')).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('.result-metrics strong').first()).toHaveText('2/2')
+})
+
+test('a group without mistakes passes after a single round', async ({ page }) => {
+  const suffix = uid()
+  await stubSpeech(page)
+  await register(page, `Perfect${suffix}`)
+  await openRepeatTask(page, suffix)
+
+  const input = page.getByLabel('输入你听到的词语')
+  await input.fill('apple')
+  await input.press('Enter')
+  await expect(page.getByText('书', { exact: true })).toBeVisible({ timeout: 5000 })
   await input.fill('book')
   await input.press('Enter')
 
-  await expect(page.getByText('听写结果已保存')).toBeVisible()
+  // 没错过的词不用重练，一轮结束就出结果。
+  await expect(page.getByText('听写结果已保存')).toBeVisible({ timeout: 6000 })
   await expect(page.locator('.result-metrics strong').first()).toHaveText('2/2')
 })

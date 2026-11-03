@@ -9,6 +9,8 @@ export interface GroupProgress {
   groupTotal: number
   current: number
   total: number
+  /** 第二列的标题，强制重做时是「本轮进度」 */
+  label?: string
 }
 
 export const PracticeLayout = ({
@@ -20,6 +22,7 @@ export const PracticeLayout = ({
   centered = false,
   contextLabel,
   groupProgress,
+  roundLabel,
 }: {
   task: LearningTask
   current: number
@@ -29,6 +32,7 @@ export const PracticeLayout = ({
   centered?: boolean
   contextLabel?: string
   groupProgress?: GroupProgress | null
+  roundLabel?: string
 }) => {
   const progress = total > 0 ? Math.round((current / total) * 100) : 0
   return (
@@ -67,11 +71,17 @@ export const PracticeLayout = ({
               </strong>
             </div>
             <div>
-              <span>组内进度</span>
+              <span>{groupProgress.label ?? '组内进度'}</span>
               <strong>
                 第 {groupProgress.current} / {groupProgress.total} 个
               </strong>
             </div>
+            {roundLabel ? (
+              <div>
+                <span>练习轮次</span>
+                <strong>{roundLabel}</strong>
+              </div>
+            ) : null}
             <div className="practice-group-track">
               <div
                 style={{

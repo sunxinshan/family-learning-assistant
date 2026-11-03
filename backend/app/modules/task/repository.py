@@ -39,6 +39,20 @@ class TaskRepository:
             return None
         return self.session.scalar(query)
 
+    def list_entry_ids(self, task_id: str, start_sequence: int, end_sequence: int) -> list[str]:
+        """按顺序返回某个分组区间内的快照词条 id，用于强制答对模式的分轮取词。"""
+        rows = self.session.scalars(
+            select(TaskSnapshotEntry.id)
+            .join(TaskSnapshot, TaskSnapshot.id == TaskSnapshotEntry.snapshot_id)
+            .where(
+                TaskSnapshot.task_id == task_id,
+                TaskSnapshotEntry.sequence_no >= start_sequence,
+                TaskSnapshotEntry.sequence_no <= end_sequence,
+            )
+            .order_by(TaskSnapshotEntry.sequence_no)
+        )
+        return list(rows)
+
     def list_for_user(self, user_id: str, include_snapshot: bool = True) -> list[LearningTask]:
         query = select(LearningTask)
         if include_snapshot:

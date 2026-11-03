@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -41,6 +43,8 @@ class TaskPracticeDefinition:
     subject: str
     dictation_mode: str
     words_per_group: int
+    total_groups: int
+    repeat_until_correct: bool
     entries: list[PracticeEntry]
 
 
@@ -150,6 +154,8 @@ class TaskService:
             subject=task.subject,
             dictation_mode=task.config_json["dictation"]["mode"],
             words_per_group=task.config_json["words_per_group"],
+            total_groups=task.config_json["total_groups"],
+            repeat_until_correct=bool(task.config_json.get("repeat_until_correct")),
             entries=[
                 PracticeEntry(
                     id=entry.id,
@@ -164,6 +170,14 @@ class TaskService:
                 for entry in task.snapshot.entries
             ],
         )
+
+    def list_group_entry_ids(
+        self, task_id: str, group_index: int, words_per_group: int
+    ) -> list[str]:
+        """取第 group_index 组（从 1 开始）的词条 id，顺序与任务快照一致。"""
+        size = max(words_per_group, 1)
+        start = (max(group_index, 1) - 1) * size + 1
+        return self.repository.list_entry_ids(task_id, start, start + size - 1)
 
     def set_progress(self, task: LearningTask, progress: int) -> None:
         task.progress = max(task.progress, max(0, min(progress, 100)))

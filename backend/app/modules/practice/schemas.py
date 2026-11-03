@@ -27,6 +27,8 @@ class AttemptOut(CamelModel):
     target_entry_ids: list[str]
     status: str
     current_index: int
+    # 强制答对模式的轮次：一组要练几轮，每轮只走一遍本轮待练的词。
+    round_no: int = 1
     answers: list[AnswerOut]
     started_at: datetime
     updated_at: datetime

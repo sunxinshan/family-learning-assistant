@@ -107,6 +107,8 @@ export interface PracticeAttempt {
   targetEntryIds?: string[]
   status: PracticeStatus
   currentIndex: number
+  /** 强制重做模式的轮次，一组要练几轮 */ 
+  roundNo?: number
   answers: AnswerRecord[]
   startedAt: string
   updatedAt: string

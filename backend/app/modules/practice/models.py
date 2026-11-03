@@ -20,6 +20,8 @@ class PracticeAttempt(IdMixin, Base):
     target_entry_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="in_progress", nullable=False)
     current_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 强制答对模式下一组要练好几轮，每轮只走一遍本轮的待练词。
+    round_no: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     total: Mapped[int] = mapped_column(Integer, nullable=False)
     started_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
