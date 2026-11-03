@@ -27,6 +27,8 @@ from app.modules.vocabulary.repository import VocabularyRepository
 from app.modules.vocabulary.service import VocabularyService
 
 WRONG_QUESTION_CORRECT_STREAK = 2
+# 开启「答对后才能进入下一组」时，同一组里的每个词都要连续拼对这么多次才放行下一题。
+GROUP_REQUIRED_CORRECT_STREAK = 2
 
 
 @dataclass
@@ -40,6 +42,7 @@ def answer_to_out(answer: PracticeAnswer) -> AnswerOut:
     return AnswerOut(
         id=answer.id,
         question_id=answer.question_id,
+        snapshot_entry_id=answer.snapshot_entry_id,
         prompt=answer.prompt,
         expected=answer.expected,
         given=answer.given,
@@ -51,6 +54,8 @@ def answer_to_out(answer: PracticeAnswer) -> AnswerOut:
 
 
 def attempt_to_out(attempt: PracticeAttempt) -> AttemptOut:
+    # 同一个词在强制答对模式下会被重复作答，正确数要按词去重，否则会出现 3/2。
+    correct_entry_ids = {answer.snapshot_entry_id for answer in attempt.answers if answer.is_correct}
     return AttemptOut(
         id=attempt.id,
         task_id=attempt.task_id,
@@ -64,7 +69,7 @@ def attempt_to_out(attempt: PracticeAttempt) -> AttemptOut:
         started_at=attempt.started_at,
         updated_at=attempt.updated_at,
         completed_at=attempt.completed_at,
-        score=sum(1 for answer in attempt.answers if answer.is_correct),
+        score=len(correct_entry_ids),
         total=attempt.total,
     )
 
@@ -243,6 +248,16 @@ class PracticeService:
             progress = round(mastered / max(task.target_count, 1) * 100)
         self.task_service.set_progress(task, progress)
 
+    @staticmethod
+    def _correct_streak(attempt: PracticeAttempt, entry_id: str) -> int:
+        """最近一次作答往前数，同一个词连续拼对的次数。"""
+        streak = 0
+        for previous in reversed(attempt.answers):
+            if previous.snapshot_entry_id != entry_id or not previous.is_correct:
+                break
+            streak += 1
+        return streak
+
     def submit_answer(self, attempt_id: str, user_id: str, payload: AnswerSubmit) -> AttemptOut:
         attempt = self._owned_attempt(attempt_id, user_id)
         if attempt.status != "in_progress":
@@ -276,7 +291,8 @@ class PracticeService:
             attempt_id=attempt.id,
             question_id=question.id,
             snapshot_entry_id=entry.id,
-            sequence_no=attempt.current_index + 1,
+            # 同一个词允许重复作答，序号按「第几次作答」递增，满足 (attempt_id, sequence_no) 唯一约束。
+            sequence_no=len(attempt.answers) + 1,
             prompt=entry.word,
             expected=entry.word,
             given=given,
@@ -288,7 +304,12 @@ class PracticeService:
         answer.attempt = attempt
         answer = self.repository.add_answer(answer)
         self._record_learning(user_id, entry.source_entry_id, answer.id, is_correct)
-        attempt.current_index += 1
+        current_streak = self._correct_streak(attempt, entry.id)
+        # 强制答对：本词没连续拼对两次就停在这里继续练，不进入下一个词。
+        # 错题复习保持「一次过一遍」的旧行为，靠两轮复习移出错题池。
+        requires_streak = bool(task.config_json.get("repeat_until_correct"))
+        if not requires_streak or current_streak >= GROUP_REQUIRED_CORRECT_STREAK:
+            attempt.current_index += 1
         attempt.updated_at = now
         if attempt.current_index >= attempt.total:
             attempt.status = "completed"

@@ -587,7 +587,7 @@ export const TaskDetailPage = () => {
               <Checkbox
                 checked={repeatUntilCorrect}
                 onChange={setRepeatUntilCorrect}
-                label="答对后才能进入下一组"
+                label="答对后才能进入下一组（每个词连续拼对 2 次）"
               />
             </div>
           </details>

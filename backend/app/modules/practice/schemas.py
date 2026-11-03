@@ -8,6 +8,7 @@ from app.api.schemas import CamelModel
 class AnswerOut(CamelModel):
     id: str
     question_id: str | None
+    snapshot_entry_id: str
     prompt: str
     expected: str
     given: str

@@ -471,7 +471,7 @@ export const TaskCreatePage = () => {
                   <Checkbox
                     checked={form.repeatUntilCorrect}
                     onChange={(checked) => setForm({ ...form, repeatUntilCorrect: checked })}
-                    label="开启强制重做：答对后才能进入下一组"
+                    label="开启强制重做：每个词连续拼对 2 次才进入下一个词，错题留在本组继续练"
                   />
                 </div>
               </details>

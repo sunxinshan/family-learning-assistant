@@ -24,6 +24,10 @@ import { cancelSpeech, isSpeechSupported, speakText } from '../utils/speech'
 interface Feedback {
   given: string
   correct: boolean
+  /** 本词当前连续拼对次数（强制答对模式下用来判断能不能进入下一题） */
+  streak: number
+  /** 是否已经过关，可以进入下一个词 */
+  passed: boolean
 }
 
 const defaultDictationConfig: DictationConfig = {
@@ -38,6 +42,25 @@ const defaultDictationConfig: DictationConfig = {
 /** 线上听写答对后停留多久再自动进入下一题（毫秒） */
 const AUTO_ADVANCE_DELAY_MS = 1000
 
+/** 强制答对模式下，同一个词要连续拼对几次才算过关 */
+const REQUIRED_CORRECT_STREAK = 2
+
+/** 从最近一次作答往前数，某个词连续拼对的次数。 */
+function streakFor(attempt: PracticeAttempt | null, target: WordEntry | undefined) {
+  if (!attempt || !target) return 0
+  let streak = 0
+  for (let index = attempt.answers.length - 1; index >= 0; index -= 1) {
+    const record = attempt.answers[index]
+    // 老数据没有 snapshotEntryId，退化成用提示词比对。
+    const matches = record.snapshotEntryId
+      ? record.snapshotEntryId === target.id
+      : record.prompt === target.word
+    if (!matches || !record.correct) break
+    streak += 1
+  }
+  return streak
+}
+
 export const DictationPracticePage = () => {
   const { taskId } = useParams()
   const navigate = useNavigate()
@@ -49,6 +72,9 @@ export const DictationPracticePage = () => {
   const config = task?.config.dictation ?? defaultDictationConfig
   const isOffline = config.mode === 'offline'
   const speechEnabled = config.speechEnabled !== false
+  const repeatUntilCorrect = Boolean(task?.config.repeatUntilCorrect)
+  // 错题复习仍是一次过一遍（两轮复习后移出错题池），只有任务勾了强制重做才要求连对。
+  const requiresStreak = repeatUntilCorrect
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [offlineIndex, setOfflineIndex] = useState(0)
@@ -61,6 +87,8 @@ export const DictationPracticePage = () => {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [autoPaused, setAutoPaused] = useState(false)
   const [autoRound, setAutoRound] = useState(0)
+  /** 同一个词重复练习时，用它触发重新朗读 */
+  const [replayToken, setReplayToken] = useState(0)
   const [showResults, setShowResults] = useState(false)
   const [taskLoading, setTaskLoading] = useState(true)
   const [taskLoadError, setTaskLoadError] = useState('')
@@ -80,6 +108,8 @@ export const DictationPracticePage = () => {
   )
   const entry = practiceEntries[activeIndex]
   const offlineEntry = practiceEntries[offlineIndex]
+  // 当前这个词已经连续拼对了几次（强制答对 / 错题复习用来提示还差几次）。
+  const currentStreak = requiresStreak ? streakFor(attempt, entry) : 0
   const groupProgressFor = (target: WordEntry | undefined) => {
     if (!target || !task) return null
     const snapshotIndex = task.snapshot.findIndex((item) => item.id === target.id)
@@ -219,7 +249,8 @@ export const DictationPracticePage = () => {
       return
     }
     speakEntry(entry)
-    if (config.playbackMode !== 'auto') {
+    if (config.playbackMode !== 'auto' || requiresStreak) {
+      // 强制答对模式下不能到点就换词，否则等于没答对也能过；这里只负责进词发音。
       setCountdown(null)
       return
     }
@@ -252,6 +283,8 @@ export const DictationPracticePage = () => {
     feedback,
     isOffline,
     practiceEntries.length,
+    replayToken,
+    requiresStreak,
     showResults,
     speakEntry,
     speechEnabled,
@@ -669,10 +702,13 @@ export const DictationPracticePage = () => {
         durationMs: Math.round(performance.now() - startedAtRef.current),
       }, isWrongPractice ? 'wrong' : 'regular')
       setAttempt(result.attempt)
-      setFeedback({ given: answer.trim(), correct: result.isCorrect })
-      // 线上听写答对即自动继续；答错停在原地看正确答案再手动继续。
+      const streak = streakFor(result.attempt, entry)
+      // 强制答对模式下，只有连续拼对两次才算过关；普通模式答错也放行到下一个词。
+      const passed = !requiresStreak || (result.isCorrect && streak >= REQUIRED_CORRECT_STREAK)
+      setFeedback({ given: answer.trim(), correct: result.isCorrect, streak, passed })
       clearAutoAdvance()
-      if (result.isCorrect) {
+      // 只有答对且过关才自动继续；其余情况停在原地，等用户点按钮。
+      if (passed && result.isCorrect) {
         autoAdvanceTimer.current = window.setTimeout(
           () => advanceTo(result.attempt),
           AUTO_ADVANCE_DELAY_MS,
@@ -694,6 +730,16 @@ export const DictationPracticePage = () => {
     setActiveIndex(source.currentIndex)
     setAnswer('')
     setFeedback(null)
+    setReplayToken((token) => token + 1)
+    startedAtRef.current = performance.now()
+  }
+
+  // 本词还没连对够次数：清空反馈重新拼同一个词，并重新朗读一遍。
+  const retryCurrent = () => {
+    clearAutoAdvance()
+    setAnswer('')
+    setFeedback(null)
+    setReplayToken((token) => token + 1)
     startedAtRef.current = performance.now()
   }
 
@@ -718,13 +764,22 @@ export const DictationPracticePage = () => {
             线上听写
           </Badge>
           <span>
-            {!speechEnabled
-              ? '不朗读 · 按提示自行拼写'
-              : config.playbackMode === 'auto'
-                ? `自动播放 · 每 ${config.intervalSeconds} 秒进入下一个词 · 每次朗读 ${config.repeatCount} 次`
-                : `手动播放 · 进入词语自动朗读 ${config.repeatCount} 次`}
+            {requiresStreak
+              ? `答对才能进下一题 · 每词连续拼对 ${REQUIRED_CORRECT_STREAK} 次${speechEnabled ? ` · 每次朗读 ${config.repeatCount} 次` : ' · 不朗读'}`
+              : !speechEnabled
+                ? '不朗读 · 按提示自行拼写'
+                : config.playbackMode === 'auto'
+                  ? `自动播放 · 每 ${config.intervalSeconds} 秒进入下一个词 · 每次朗读 ${config.repeatCount} 次`
+                  : `手动播放 · 进入词语自动朗读 ${config.repeatCount} 次`}
           </span>
         </div>
+
+        {requiresStreak && currentStreak > 0 && !feedback ? (
+          <div className="practice-streak-note">
+            <ListChecks size={15} />
+            本词已连续拼对 {currentStreak} 次，再拼对 {REQUIRED_CORRECT_STREAK - currentStreak} 次进入下一个词
+          </div>
+        ) : null}
 
         {speechEnabled ? (
           <div className="dictation-audio-area">
@@ -765,7 +820,7 @@ export const DictationPracticePage = () => {
           </div>
         </div>
 
-        {speechEnabled && config.playbackMode === 'auto' ? (
+        {speechEnabled && config.playbackMode === 'auto' && !requiresStreak ? (
           <div className={`auto-play-countdown ${autoPaused ? 'is-paused' : ''}`}>
             {autoPaused ? <Pause size={15} /> : <Clock3 size={15} />}
             <span>
@@ -805,7 +860,13 @@ export const DictationPracticePage = () => {
           <div className={`answer-feedback ${feedback.correct ? 'feedback-correct' : 'feedback-wrong'}`}>
             <div className="feedback-heading">
               {feedback.correct ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-              <strong>{feedback.correct ? '拼写正确' : '拼写需要修正'}</strong>
+              <strong>
+                {feedback.correct
+                  ? feedback.passed
+                    ? '拼写正确'
+                    : '拼写正确 · 还要再拼一次'
+                  : '拼写需要修正'}
+              </strong>
             </div>
             <div className="dictation-answer-reveal">
               <span>正确答案</span>
@@ -824,6 +885,15 @@ export const DictationPracticePage = () => {
                 </Button>
               </div>
             ) : null}
+            {requiresStreak ? (
+              <p className="feedback-streak">
+                {feedback.passed
+                  ? `本词已连续拼对 ${feedback.streak} 次，过关`
+                  : `本词连续拼对 ${feedback.streak}/${REQUIRED_CORRECT_STREAK} 次，再拼对 ${
+                      REQUIRED_CORRECT_STREAK - feedback.streak
+                    } 次才能进入下一个词`}
+              </p>
+            ) : null}
             <blockquote>
               {entry.example}
               <small>{entry.exampleTranslation}</small>
@@ -834,14 +904,24 @@ export const DictationPracticePage = () => {
         <footer className="practice-card-footer">
           <span className="practice-hint">
             {feedback
-              ? feedback.correct
-                ? `答对了，${AUTO_ADVANCE_DELAY_MS / 1000} 秒后自动继续`
-                : '本题已保存，可继续下一题'
+              ? feedback.passed
+                ? feedback.correct
+                  ? `答对了，${AUTO_ADVANCE_DELAY_MS / 1000} 秒后自动继续`
+                  : '本题已保存，可继续下一题'
+                : `本词还没连对 ${REQUIRED_CORRECT_STREAK} 次，继续拼这个词`
               : '按 Enter 也可以提交'}
           </span>
           {feedback ? (
-            <Button variant="primary" icon={ArrowRight} onClick={advance}>
-              {attempt.status === 'completed' ? '查看听写结果' : '下一题'}
+            <Button
+              variant="primary"
+              icon={feedback.passed ? ArrowRight : RotateCcw}
+              onClick={feedback.passed ? advance : retryCurrent}
+            >
+              {feedback.passed
+                ? attempt.status === 'completed'
+                  ? '查看听写结果'
+                  : '下一题'
+                : '再拼一次'}
             </Button>
           ) : (
             <Button

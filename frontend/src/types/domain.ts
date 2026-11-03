@@ -88,6 +88,7 @@ export interface LearningTask {
 export interface AnswerRecord {
   id: string
   questionId: string
+  snapshotEntryId?: string
   prompt: string
   expected: string
   given: string
