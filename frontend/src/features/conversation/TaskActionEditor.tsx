@@ -1,17 +1,8 @@
-import { ListChecks } from 'lucide-react'
+import { Info, ListChecks } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Badge,
-  Checkbox,
-  Field,
-  InlineError,
-  SelectInput,
-  TextInput,
-} from '../../components/ui'
+import { Badge, Field, InlineError, SelectInput, TextInput } from '../../components/ui'
+import { TaskAdvancedSettings, TaskDictationSettings } from '../task/TaskSettingsFields'
 import type {
-  DictationHint,
-  DictationMode,
-  PlaybackMode,
   PendingAction,
   Subject,
   TaskDraft,
@@ -46,7 +37,8 @@ export const TaskActionEditor = ({
     if (!selectedLibrary || !draft) return
     setSubjectFilter(selectedLibrary.subject)
     setSelectionText(formatEntrySelection(draft.selectedEntryIds, selectedLibrary.entries))
-  }, [selectedLibrary?.id])
+    // 词库先以摘要形式到达（entries 为空），完整词条加载后需要重新按草稿回填勾选。
+  }, [selectedLibrary?.id, selectedLibrary?.entries.length])
 
   const selection = selectedLibrary && draft
     ? parseEntrySelection(selectionText, selectedLibrary.entries)
@@ -161,6 +153,14 @@ export const TaskActionEditor = ({
   )
   const originalIndex = (entryId: string) =>
     (selectedLibrary?.entries.findIndex((entry) => entry.id === entryId) ?? -1) + 1
+  const hintEntry = selectedEntries[0]
+  const hintPreview = !draft?.dictation
+    ? ''
+    : !hintEntry
+      ? '勾选词条后可预览朗读时显示的提示'
+      : draft.dictation.hint === 'phonetic'
+        ? hintEntry.phonetic || '该词条暂未填写拼音/音标'
+        : hintEntry.meanings.join('；')
 
   const entryRow = (entry: NonNullable<typeof selectedLibrary>['entries'][number]) => (
     <label
@@ -187,32 +187,6 @@ export const TaskActionEditor = ({
             onChange={(event) => update({ name: event.target.value })}
           />
         </Field>
-
-        <div className="form-grid-two">
-          <Field label="学习类型">
-            <SelectInput value={draft.type} disabled aria-readonly="true">
-              <option value="dictation">听写练习（V1 唯一正式类型）</option>
-            </SelectInput>
-          </Field>
-          <Field label="任务模式">
-            <SelectInput
-              value={draft.mode}
-              onChange={(event) => {
-                const mode = event.target.value as 'fixed' | 'long_term'
-                update({
-                  mode,
-                  wordsPerGroup:
-                    mode === 'fixed'
-                      ? selectedIds.size
-                      : Math.min(draft.wordsPerGroup, Math.max(selectedIds.size, 1)),
-                })
-              }}
-            >
-              <option value="long_term">长期任务</option>
-              <option value="fixed">固定任务</option>
-            </SelectInput>
-          </Field>
-        </div>
 
         <div className="form-grid-two">
           <Field label="学科筛选">
@@ -297,119 +271,40 @@ export const TaskActionEditor = ({
           </div>
         </div>
 
-        {draft.mode === 'long_term' ? (
-          <Field label="每组数量" hint={`学习数量自动等于已选 ${selection.entries.length} 项`}>
-            <TextInput
-              type="number"
-              min={1}
-              max={Math.max(selection.entries.length, 1)}
-              value={draft.wordsPerGroup}
-              onChange={(event) => update({ wordsPerGroup: Number(event.target.value) })}
-            />
-          </Field>
-        ) : null}
+        <TaskAdvancedSettings
+          type={draft.type}
+          mode={draft.mode}
+          selectedCount={selection.entries.length}
+          wordsPerGroup={draft.wordsPerGroup}
+          repeatUntilCorrect={draft.repeatUntilCorrect}
+          onModeChange={(mode) =>
+            update({
+              mode,
+              wordsPerGroup:
+                mode === 'fixed'
+                  ? selectedIds.size
+                  : Math.min(draft.wordsPerGroup, Math.max(selectedIds.size, 1)),
+            })
+          }
+          onWordsPerGroupChange={(wordsPerGroup) => update({ wordsPerGroup })}
+          onRepeatUntilCorrectChange={(repeatUntilCorrect) => update({ repeatUntilCorrect })}
+        />
 
         {draft.type === 'dictation' && draft.dictation ? (
-          <div className="dictation-config-box compact-dictation-config">
-            <div className="form-grid-two">
-              <Field label="听写方式">
-                <SelectInput
-                  value={draft.dictation.mode}
-                  onChange={(event) =>
-                    update({
-                      dictation: {
-                        ...draft.dictation!,
-                        mode: event.target.value as DictationMode,
-                      },
-                    })
-                  }
-                >
-                  <option value="online">线上听写</option>
-                  <option value="offline">线下听写</option>
-                </SelectInput>
-              </Field>
-              <Field label="播放方式">
-                <SelectInput
-                  value={draft.dictation.playbackMode}
-                  onChange={(event) =>
-                    update({
-                      dictation: {
-                        ...draft.dictation!,
-                        playbackMode: event.target.value as PlaybackMode,
-                      },
-                    })
-                  }
-                >
-                  <option value="manual">手动播放</option>
-                  <option value="auto">自动播放</option>
-                </SelectInput>
-              </Field>
-            </div>
-            <div className="form-grid-three">
-              {draft.dictation.playbackMode === 'auto' ? (
-                <Field label="播放间隔">
-                  <TextInput
-                    type="number"
-                    min={2}
-                    max={60}
-                    value={draft.dictation.intervalSeconds}
-                    onChange={(event) =>
-                      update({
-                        dictation: {
-                          ...draft.dictation!,
-                          intervalSeconds: Number(event.target.value),
-                        },
-                      })
-                    }
-                  />
-                </Field>
-              ) : <div />}
-              <Field label="朗读次数">
-                <TextInput
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={draft.dictation.repeatCount}
-                  onChange={(event) =>
-                    update({
-                      dictation: {
-                        ...draft.dictation!,
-                        repeatCount: Number(event.target.value),
-                      },
-                    })
-                  }
-                />
-              </Field>
-              <Field label="朗读内容">
-                <SelectInput
-                  value={draft.dictation.hint}
-                  disabled={selectedLibrary?.subject === 'chinese'}
-                  onChange={(event) =>
-                    update({
-                      dictation: {
-                        ...draft.dictation!,
-                        hint: event.target.value as DictationHint,
-                      },
-                    })
-                  }
-                >
-                  <option value="phonetic">
-                    {selectedLibrary?.subject === 'chinese' ? '词语发音（直接读出）' : '英语单词'}
-                  </option>
-                  {selectedLibrary?.subject !== 'chinese' ? (
-                    <option value="meaning">中文释义</option>
-                  ) : null}
-                </SelectInput>
-              </Field>
-            </div>
-          </div>
+          <TaskDictationSettings
+            subject={selectedLibrary?.subject ?? 'english'}
+            dictation={draft.dictation}
+            hintPreview={hintPreview}
+            onChange={(changes) => update({ dictation: { ...draft.dictation!, ...changes } })}
+          />
         ) : null}
 
-        <Checkbox
-          checked={draft.repeatUntilCorrect}
-          onChange={(checked) => update({ repeatUntilCorrect: checked })}
-          label="强制重做：答对后才能进入下一组"
-        />
+        <div className="info-note">
+          <Info size={15} />
+          {fixed
+            ? '固定任务创建后不能修改学习内容；需要调整时请删除并重新创建。'
+            : '长期任务会保存创建时的词库快照，后续修改原词库不会影响已有任务。'}
+        </div>
       </div>
     </div>
   )

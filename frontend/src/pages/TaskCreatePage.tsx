@@ -2,12 +2,10 @@ import {
   ArrowLeft,
   BookOpenText,
   CheckCircle2,
-  ChevronDown,
   Headphones,
   Info,
   ListChecks,
   Play,
-  Settings2,
   ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -16,7 +14,6 @@ import { api } from '../api'
 import {
   Badge,
   Button,
-  Checkbox,
   EmptyState,
   Field,
   InlineError,
@@ -25,6 +22,7 @@ import {
   SelectInput,
   TextInput,
 } from '../components/ui'
+import { TaskAdvancedSettings, TaskDictationSettings } from '../features/task/TaskSettingsFields'
 import { useAppStore } from '../stores/AppStoreContext'
 import type {
   DictationHint,
@@ -77,12 +75,14 @@ export const TaskCreatePage = () => {
     wordSelection: '',
     wordsPerGroup: Math.min(5, defaultLibrary?.entries.length ?? 0),
     repeatUntilCorrect: false,
-    dictationMode: 'online' as DictationMode,
-    playbackMode: 'manual' as PlaybackMode,
-    intervalSeconds: 8,
-    repeatCount: 2,
-    hint: 'phonetic' as DictationHint,
-    speechEnabled: true,
+    dictation: {
+      mode: 'online' as DictationMode,
+      playbackMode: 'manual' as PlaybackMode,
+      intervalSeconds: 8,
+      repeatCount: 2,
+      hint: 'phonetic' as DictationHint,
+      speechEnabled: true,
+    },
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -188,7 +188,7 @@ export const TaskCreatePage = () => {
   const hintPreview = (() => {
     const entry = selectedEntries[0]
     if (!entry) return '勾选词条后可预览朗读时显示的提示'
-    if (form.hint === 'phonetic') return entry.phonetic || '该词条暂未填写拼音/音标'
+    if (form.dictation.hint === 'phonetic') return entry.phonetic || '该词条暂未填写拼音/音标'
     return entry.meanings.join('；')
   })()
 
@@ -246,12 +246,10 @@ export const TaskCreatePage = () => {
         ...(form.type === 'dictation'
           ? {
               dictation: {
-                mode: form.dictationMode,
-                playbackMode: form.playbackMode,
-                intervalSeconds: form.playbackMode === 'auto' ? form.intervalSeconds : 8,
-                hint: form.hint,
-                repeatCount: Math.max(1, form.repeatCount),
-                speechEnabled: form.speechEnabled,
+                ...form.dictation,
+                intervalSeconds:
+                  form.dictation.playbackMode === 'auto' ? form.dictation.intervalSeconds : 8,
+                repeatCount: Math.max(1, form.dictation.repeatCount),
               },
             }
           : {}),
@@ -416,153 +414,28 @@ export const TaskCreatePage = () => {
                 </div>
               </div>
 
-              <details className="advanced-settings">
-                <summary>
-                  <span className="advanced-settings-title">
-                    <Settings2 size={16} />
-                    高级设置
-                  </span>
-                  <span className="advanced-settings-summary">
-                    {taskTypeLabel(form.type)} · {taskModeLabel(form.mode)} ·{' '}
-                    {fixed ? '固定内容' : `${totalGroups} 组`} · 强制重做{form.repeatUntilCorrect ? '开' : '关'}
-                  </span>
-                  <ChevronDown size={16} className="advanced-settings-chevron" />
-                </summary>
-                <div className="advanced-settings-body">
-                  <div className="form-grid-two">
-                    <Field label="学习类型">
-                      <SelectInput value={form.type} disabled aria-readonly="true">
-                        <option value="dictation">听写练习（V1 唯一正式类型）</option>
-                      </SelectInput>
-                    </Field>
-                    <Field label="任务模式">
-                      <SelectInput
-                        value={form.mode}
-                        onChange={(event) =>
-                          setForm({ ...form, mode: event.target.value as 'fixed' | 'long_term' })
-                        }
-                      >
-                        <option value="long_term">长期任务</option>
-                        <option value="fixed">固定任务</option>
-                      </SelectInput>
-                    </Field>
-                  </div>
-                  {fixed ? (
-                    <div className="info-note">
-                      <Info size={15} />
-                      固定任务直接使用已选 {selectedCount} 个词条，不需要学习数量和每组数量。
-                    </div>
-                  ) : (
-                    <Field
-                      label="每组数量"
-                      hint={`已选 ${selectedCount} 项；该数量会决定 ${totalGroups} 个学习分组`}
-                    >
-                      <TextInput
-                        type="number"
-                        min={1}
-                        max={Math.max(selectedCount, 1)}
-                        value={form.wordsPerGroup}
-                        onChange={(event) =>
-                          setForm({ ...form, wordsPerGroup: Number(event.target.value) })
-                        }
-                      />
-                    </Field>
-                  )}
-                  <Checkbox
-                    checked={form.repeatUntilCorrect}
-                    onChange={(checked) => setForm({ ...form, repeatUntilCorrect: checked })}
-                    label="开启强制重做：每个词连续拼对 2 次才进入下一个词，错题留在本组继续练"
-                  />
-                </div>
-              </details>
+              <TaskAdvancedSettings
+                type={form.type}
+                mode={form.mode}
+                selectedCount={selectedCount}
+                wordsPerGroup={form.wordsPerGroup}
+                repeatUntilCorrect={form.repeatUntilCorrect}
+                onModeChange={(mode) => setForm({ ...form, mode })}
+                onWordsPerGroupChange={(wordsPerGroup) => setForm({ ...form, wordsPerGroup })}
+                onRepeatUntilCorrectChange={(repeatUntilCorrect) =>
+                  setForm({ ...form, repeatUntilCorrect })
+                }
+              />
 
               {form.type === 'dictation' ? (
-                <div className="dictation-config-box">
-                  <div className="dictation-config-heading">
-                    <Headphones size={16} />
-                    <div>
-                      <strong>听写设置</strong>
-                      <span>这些设置会随任务保存，并作用于听写练习页面。</span>
-                    </div>
-                  </div>
-                  <Checkbox
-                    checked={form.speechEnabled}
-                    onChange={(checked) => setForm({ ...form, speechEnabled: checked })}
-                    label="开启朗读：练习时自动读出词语；关闭后练习页不发声，只在答错时提供朗读按钮"
-                  />
-                  <div className="form-grid-two">
-                    <Field label="听写方式">
-                      <SelectInput
-                        value={form.dictationMode}
-                        onChange={(event) =>
-                          setForm({ ...form, dictationMode: event.target.value as DictationMode })
-                        }
-                      >
-                        <option value="online">线上听写 · 页面输入并自动判分</option>
-                        <option value="offline">线下听写 · 用户勾选错误项</option>
-                      </SelectInput>
-                    </Field>
-                    <Field label="播放方式">
-                      <SelectInput
-                        value={form.playbackMode}
-                        disabled={!form.speechEnabled}
-                        onChange={(event) =>
-                          setForm({ ...form, playbackMode: event.target.value as PlaybackMode })
-                        }
-                      >
-                        <option value="manual">手动播放</option>
-                        <option value="auto">自动播放</option>
-                      </SelectInput>
-                    </Field>
-                  </div>
-                  <div className="form-grid-three">
-                    {form.playbackMode === 'auto' && form.speechEnabled ? (
-                      <Field label="自动播放间隔" hint="练习页面显示倒计时">
-                        <TextInput
-                          type="number"
-                          min={2}
-                          max={60}
-                          value={form.intervalSeconds}
-                          onChange={(event) =>
-                            setForm({ ...form, intervalSeconds: Number(event.target.value) })
-                          }
-                        />
-                      </Field>
-                    ) : <div />}
-                    <Field label="朗读次数">
-                      <TextInput
-                        type="number"
-                        min={1}
-                        max={5}
-                        disabled={!form.speechEnabled}
-                        value={form.repeatCount}
-                        onChange={(event) =>
-                          setForm({ ...form, repeatCount: Number(event.target.value) })
-                        }
-                      />
-                    </Field>
-                    <Field label="朗读内容">
-                      <SelectInput
-                        value={form.hint}
-                        disabled={!form.speechEnabled || selectedLibrary.subject === 'chinese'}
-                        onChange={(event) =>
-                          setForm({ ...form, hint: event.target.value as DictationHint })
-                        }
-                      >
-                        <option value="phonetic">
-                          {selectedLibrary.subject === 'english' ? '英语单词' : '词语发音（直接读出）'}
-                        </option>
-                        {selectedLibrary.subject === 'english' ? (
-                          <option value="meaning">中文释义</option>
-                        ) : null}
-                      </SelectInput>
-                    </Field>
-                  </div>
-                  <div className="hint-preview">
-                    <span>页面提示预览</span>
-                    <strong>{hintPreview}</strong>
-                  </div>
-                </div>
+                <TaskDictationSettings
+                  subject={selectedLibrary.subject}
+                  dictation={form.dictation}
+                  hintPreview={hintPreview}
+                  onChange={(changes) =>
+                    setForm({ ...form, dictation: { ...form.dictation, ...changes } })
+                  }
+                />
               ) : null}
 
               <div className="info-note">
@@ -596,12 +469,12 @@ export const TaskCreatePage = () => {
               </div>
               {form.type === 'dictation' ? (
                 <>
-                  <div><dt>听写方式</dt><dd>{form.dictationMode === 'online' ? '线上听写' : '线下听写'}</dd></div>
-                  <div><dt>朗读</dt><dd>{form.speechEnabled ? `开启 · 每次 ${form.repeatCount} 次` : '关闭'}</dd></div>
-                  {form.speechEnabled ? (
+                  <div><dt>听写方式</dt><dd>{form.dictation.mode === 'online' ? '线上听写' : '线下听写'}</dd></div>
+                  <div><dt>朗读</dt><dd>{form.dictation.speechEnabled ? `开启 · 每次 ${form.dictation.repeatCount} 次` : '关闭'}</dd></div>
+                  {form.dictation.speechEnabled ? (
                     <>
-                      <div><dt>播放方式</dt><dd>{form.playbackMode === 'auto' ? `自动 · ${form.intervalSeconds} 秒` : '手动'}</dd></div>
-                      <div><dt>朗读内容</dt><dd>{selectedLibrary.subject === 'chinese' ? '词语发音（直接读出）' : form.hint === 'phonetic' ? '英语单词' : '中文释义'}</dd></div>
+                      <div><dt>播放方式</dt><dd>{form.dictation.playbackMode === 'auto' ? `自动 · ${form.dictation.intervalSeconds} 秒` : '手动'}</dd></div>
+                      <div><dt>朗读内容</dt><dd>{selectedLibrary.subject === 'chinese' ? '词语发音（直接读出）' : form.dictation.hint === 'phonetic' ? '英语单词' : '中文释义'}</dd></div>
                     </>
                   ) : (
                     <div><dt>朗读内容</dt><dd>不朗读 · 错题时可听</dd></div>

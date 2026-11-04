@@ -65,6 +65,7 @@ test('real HTTP flow: server import, agent confirmation, active restore, offline
   await expect(page.getByText('已选 2 / 2')).toBeVisible()
   await expect(page.getByLabel('确认面板选择词条序号')).toHaveValue('1-2')
   await expect(page.getByLabel('学科筛选')).toHaveValue('english')
+  await page.locator('.task-action-editor .advanced-settings summary').click()
   await expect(page.getByLabel('学习类型')).toBeDisabled()
   await page.getByLabel('任务模式').selectOption('long_term')
   await page.getByLabel('每组数量').fill('1')
