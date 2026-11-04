@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 import unicodedata
 from pathlib import Path
 from typing import Any, Protocol
@@ -92,6 +93,13 @@ HEADER_SETS = {
     "example": EXAMPLE_HEADERS,
     "translation": TRANSLATION_HEADERS,
 }
+# 表头映射 Prompt 里使用的字段名，与内部 CANONICAL_FIELDS 对齐。
+MAPPING_ALIASES = {
+    "partOfSpeech": "pos",
+    "part_of_speech": "pos",
+    "exampleTranslation": "translation",
+    "example_translation": "translation",
+}
 
 
 class HeaderAnalyzer(Protocol):
@@ -114,6 +122,9 @@ def read_vocabulary_rows(path: Path) -> list[list[object]]:
         return list(csv.reader(io.StringIO(text)))
     workbook = load_workbook(path, read_only=True, data_only=True)
     sheet = workbook.active
+    # 部分导出工具会把 dimension 写成 A1，只读模式会据此截断整张表；
+    # 重置后按实际行数据读取，避免表头之外的内容被丢弃。
+    sheet.reset_dimensions()
     rows = [list(row) for row in sheet.iter_rows(values_only=True)]
     workbook.close()
     return rows
@@ -122,6 +133,14 @@ def read_vocabulary_rows(path: Path) -> list[list[object]]:
 def _cell(row: list[object], indexes: dict[str, int], key: str) -> str:
     index = indexes[key]
     return "" if index < 0 or index >= len(row) else str(row[index] or "").strip()
+
+
+def _header_matches(header: str, field: str) -> bool:
+    if header in HEADER_SETS[field]:
+        return True
+    # “单词 / 短语”“word/phrase”这类复合表头按分隔符拆开后逐段匹配。
+    parts = {part.strip("_ ") for part in re.split(r"[/、,，|]+", header)}
+    return any(part and part in HEADER_SETS[field] for part in parts)
 
 
 def _rule_mapping(raw_headers: list[object]) -> dict[str, int]:
@@ -133,7 +152,7 @@ def _rule_mapping(raw_headers: list[object]) -> dict[str, int]:
             (
                 i
                 for i, header in enumerate(normalized)
-                if i not in used and header in HEADER_SETS[field]
+                if i not in used and _header_matches(header, field)
             ),
             -1,
         )
@@ -153,10 +172,15 @@ def _sample_rows(rows: list[list[object]], limit: int = 5) -> list[list[str]]:
 def _validate_mapping(mapping: object, header_count: int) -> dict[str, int]:
     if not isinstance(mapping, dict):
         raise AppError("header_mapping_failed", "模型未返回有效列映射", status_code=422)
+    # 模型 Prompt 使用 partOfSpeech / exampleTranslation，解析层统一转成内部字段名。
+    source = dict(mapping)
+    for alias, field in MAPPING_ALIASES.items():
+        if field not in source and alias in source:
+            source[field] = source[alias]
     result: dict[str, int] = {}
     used: set[int] = set()
     for field in CANONICAL_FIELDS:
-        value = mapping.get(field, -1)
+        value = source.get(field, -1)
         if isinstance(value, bool) or not isinstance(value, int):
             raise AppError("header_mapping_failed", "模型列映射索引格式错误", status_code=422)
         if value < -1 or value >= header_count:

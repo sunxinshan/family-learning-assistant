@@ -177,3 +177,73 @@ def test_extraction_preserves_requested_chinese_subject(client: TestClient) -> N
     body = response.json()
     assert body["extractedJson"]["subject"] == "chinese"
     assert body["extractedJson"]["entries"][0]["phonetic"] == "píng guǒ"
+
+
+def test_compound_word_header_is_recognized_without_model(tmp_path: Path) -> None:
+    path = tmp_path / "compound.csv"
+    path.write_text(
+        "单元,单词 / 短语,音标,词性,中文释义\n"
+        "Unit 1,go jogging,/ɡəʊ ˈdʒɒɡɪŋ/,phr.,去慢跑\n",
+        encoding="utf-8",
+    )
+    analyzer = FakeAnalyzer()
+    draft, errors, mapping = parse_vocabulary(path, "compound.csv", analyzer)
+    assert analyzer.calls == 0
+    assert errors == []
+    assert mapping["source"] == "rules"
+    assert mapping["fields"]["word"]["header"] == "单词 / 短语"
+    assert draft["entries"][0]["word"] == "go jogging"
+    assert draft["entries"][0]["partOfSpeech"] == "phr."
+    assert draft["entries"][0]["meanings"] == ["去慢跑"]
+
+
+def test_model_camel_case_fields_are_accepted(tmp_path: Path) -> None:
+    path = tmp_path / "camel.csv"
+    path.write_text(HEADERS, encoding="utf-8")
+    analyzer = FakeAnalyzer(
+        {
+            "word": 0,
+            "phonetic": 1,
+            "partOfSpeech": 2,
+            "meaning": 3,
+            "example": 4,
+            "exampleTranslation": 5,
+        }
+    )
+    draft, _, mapping = parse_vocabulary(path, "camel.csv", analyzer)
+    assert mapping["source"] == "llm"
+    assert draft["entries"][0]["partOfSpeech"] == "n."
+    assert draft["entries"][0]["exampleTranslation"] == "一个苹果。"
+
+
+def test_xlsx_with_stale_dimension_reads_all_rows(tmp_path: Path) -> None:
+    import re
+    import shutil
+    import zipfile
+
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["单元", "单词 / 短语", "音标", "词性", "中文释义"])
+    sheet.append(["Unit 1", "go jogging", "/ɡəʊ ˈdʒɒɡɪŋ/", "phr.", "去慢跑"])
+    path = tmp_path / "stale.xlsx"
+    workbook.save(path)
+    workbook.close()
+
+    rewritten = tmp_path / "rewritten.xlsx"
+    with zipfile.ZipFile(path) as source, zipfile.ZipFile(rewritten, "w") as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                text = data.decode("utf-8")
+                text = re.sub(r'<dimension ref="[^"]*"/>', '<dimension ref="A1"/>', text)
+                data = text.encode("utf-8")
+            target.writestr(item, data)
+    shutil.move(rewritten, path)
+
+    draft, errors, mapping = parse_vocabulary(path, "stale.xlsx")
+    assert errors == []
+    assert mapping["source"] == "rules"
+    assert len(draft["entries"]) == 1
+    assert draft["entries"][0]["word"] == "go jogging"
