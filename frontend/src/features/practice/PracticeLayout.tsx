@@ -1,8 +1,9 @@
 import { ArrowLeft, LogOut } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Button } from '../../components/ui'
 import type { LearningTask } from '../../types/domain'
 import { taskTypeLabel } from '../../utils/format'
+import { useKeyboardViewport } from './useKeyboardViewport'
 
 export interface GroupProgress {
   group: number
@@ -35,8 +36,19 @@ export const PracticeLayout = ({
   roundLabel?: string
 }) => {
   const progress = total > 0 ? Math.round((current / total) * 100) : 0
+  // 手机软键盘弹起后，整页收缩到键盘上方的可视区域，按钮才不会被键盘盖住。
+  const keyboard = useKeyboardViewport()
+  const shellStyle = keyboard.keyboardOpen
+    ? ({
+        '--practice-vh': `${keyboard.height}px`,
+        '--practice-vt': `${keyboard.offsetTop}px`,
+      } as CSSProperties)
+    : undefined
   return (
-    <div className="practice-shell">
+    <div
+      className={`practice-shell${keyboard.keyboardOpen ? ' is-keyboard' : ''}`}
+      style={shellStyle}
+    >
       <header className="practice-header">
         <div className="practice-header-left">
           <button type="button" className="back-link" onClick={onExit}>

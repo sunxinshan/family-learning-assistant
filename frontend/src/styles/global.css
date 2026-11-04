@@ -6380,3 +6380,244 @@ ol {
   text-align: center;
   font-size: 10px;
 }
+
+/* 手机软键盘弹起：练习页（线上听写 / 错题复习）整体收缩到键盘上方。
+   高度和顶部偏移由 useKeyboardViewport 写入 CSS 变量，键盘收起后自动恢复。 */
+.practice-shell.is-keyboard {
+  position: fixed;
+  top: var(--practice-vt, 0);
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  height: var(--practice-vh, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  background: #fbfbfb;
+}
+
+.practice-shell.is-keyboard .practice-header {
+  position: static;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  height: 44px;
+  padding: 0 10px;
+}
+
+.practice-shell.is-keyboard .practice-header-divider,
+.practice-shell.is-keyboard .practice-task-name,
+.practice-shell.is-keyboard .practice-progress {
+  display: none;
+}
+
+.practice-shell.is-keyboard .practice-main {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 8px 10px 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 键盘弹起时内容一律靠上排，别再用居中把卡片顶出屏幕 */
+.practice-shell.is-keyboard .practice-centered {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 0;
+}
+
+.practice-shell.is-keyboard .practice-group-strip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+}
+
+.practice-shell.is-keyboard .practice-group-strip > div:not(.practice-group-track) {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.practice-shell.is-keyboard .practice-group-strip span {
+  font-size: 9px;
+}
+
+.practice-shell.is-keyboard .practice-group-strip strong {
+  font-size: 10px;
+}
+
+.practice-shell.is-keyboard .practice-group-track {
+  display: none;
+}
+
+.practice-shell.is-keyboard .dictation-practice-card,
+.practice-shell.is-keyboard .vocab-practice-card {
+  flex: 0 0 auto;
+  padding: 10px 12px 0;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.practice-shell.is-keyboard .practice-question-meta {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* 说明性文字在键盘弹起后全部让位给答题区 */
+.practice-shell.is-keyboard .practice-question-meta > span:not(.badge),
+.practice-shell.is-keyboard .practice-secondary-note,
+.practice-shell.is-keyboard .dictation-answer-area label,
+.practice-shell.is-keyboard .practice-hint,
+.practice-shell.is-keyboard .auto-play-countdown {
+  display: none;
+}
+
+.practice-shell.is-keyboard .practice-round-notice,
+.practice-shell.is-keyboard .practice-streak-note {
+  gap: 5px;
+  margin-top: 6px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
+.practice-shell.is-keyboard .dictation-audio-area {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.practice-shell.is-keyboard .audio-play-button {
+  width: 38px;
+  height: 38px;
+}
+
+.practice-shell.is-keyboard .audio-play-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.practice-shell.is-keyboard .dictation-audio-area h1 {
+  font-size: 12px;
+}
+
+.practice-shell.is-keyboard .dictation-audio-area p {
+  display: none;
+}
+
+.practice-shell.is-keyboard .dictation-hint-card {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 7px 10px;
+}
+
+/* 「朗读内容：英语单词」这类标签在键盘弹起后没有信息量，只留有含义/音标 */
+.practice-shell.is-keyboard .dictation-hint-card > span {
+  display: none;
+}
+
+.practice-shell.is-keyboard .dictation-hint-values {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.practice-shell.is-keyboard .dictation-hint-values.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.practice-shell.is-keyboard .dictation-hint-values strong {
+  font-size: 14px;
+}
+
+.practice-shell.is-keyboard .dictation-answer-area {
+  gap: 3px;
+  padding: 4px 0 0;
+}
+
+.practice-shell.is-keyboard .dictation-answer-area input {
+  /* iOS 上 input 字号小于 16px 会触发自动放大，反而更挤 */
+  font-size: 22px;
+}
+
+.practice-shell.is-keyboard .answer-feedback {
+  margin-top: 8px;
+  padding: 8px 10px;
+}
+
+/* 出答案后播放区和提示卡都是重复信息，让位给「正确答案」 */
+.practice-shell.is-keyboard
+  .dictation-practice-card:has(.answer-feedback)
+  .dictation-audio-area,
+.practice-shell.is-keyboard
+  .dictation-practice-card:has(.answer-feedback)
+  .dictation-hint-card,
+.practice-shell.is-keyboard
+  .dictation-practice-card:has(.answer-feedback)
+  .dictation-answer-area {
+  display: none;
+}
+
+.practice-shell.is-keyboard .answer-feedback blockquote,
+.practice-shell.is-keyboard .feedback-streak {
+  display: none;
+}
+
+.practice-shell.is-keyboard .dictation-answer-reveal {
+  margin-top: 6px;
+  padding: 8px;
+}
+
+.practice-shell.is-keyboard .dictation-answer-reveal strong {
+  font-size: 19px;
+}
+
+/* 提交/下一题按钮钉在可视区底部，内容再长也不会被键盘盖住 */
+.practice-shell.is-keyboard .practice-card-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 7px 0 max(7px, env(safe-area-inset-bottom));
+  background: var(--color-bg);
+  border-top: var(--border);
+}
+
+.practice-shell.is-keyboard .practice-card-footer .button {
+  flex: 1;
+  width: auto;
+}
+
+.practice-shell.is-keyboard .offline-review-list {
+  max-height: none;
+}
+
+/* 手机端提示条改到顶部：底部有输入框和提交按钮，浮层会挡住操作 */
+@media (max-width: 768px) {
+  .toast {
+    top: calc(var(--mobile-topbar-height) + 8px);
+    bottom: auto;
+    animation: toast-in-down 0.2s ease-out;
+  }
+
+  @keyframes toast-in-down {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+}
