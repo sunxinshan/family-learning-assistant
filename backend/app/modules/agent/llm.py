@@ -16,6 +16,8 @@ class LLMAdapter(Protocol):
 
     def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]: ...
 
+    def generate_guidance(self, system: str, user_input: str) -> dict[str, Any]: ...
+
 
 _MOCK_WORDS = {
     "apple": {"phonetic": "/ˈæpl/", "meanings": ["苹果"]},
@@ -47,6 +49,24 @@ _MOCK_PINYIN = {
     "词": "cí",
     "库": "kù",
 }
+
+_MOCK_GUIDANCE_TOPICS = (
+    (
+        ("任务", "听写"),
+        "创建、修改或删除听写任务",
+        "用我的词库「单词本」创建听写任务，每组 5 个",
+    ),
+    (
+        ("词库", "单词本", "导入", "excel", "csv", "Excel", "CSV"),
+        "创建个人词库，或把上传的 Excel/CSV 文件导入成词库",
+        "把这次上传的 Excel 导入成「三年级英语」词库",
+    ),
+    (
+        ("学习", "正确率", "错题", "掌握", "统计", "记录"),
+        "查看练习次数、平均正确率、已掌握和待复习的词数",
+        "看看我最近的学习记录",
+    ),
+)
 
 
 def _mock_pinyin(word: str) -> str:
@@ -153,6 +173,39 @@ class MockLLMAdapter:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
+    def generate_guidance(self, system: str, user_input: str) -> dict[str, Any]:
+        text = " ".join(str(user_input).split())
+        excerpt = text[:40] + ("…" if len(text) > 40 else "")
+        if any(word in text for word in ("教材", "课本")):
+            reply = (
+                "我理解你想根据教材或课本内容自动生成听写，不过当前版本暂时不支持直接读取教材。"
+                "你可以先创建或导入一个词库，再用它创建听写任务。"
+            )
+        elif not text or text.rstrip("！!。.？?，, ") in {"你好", "hi", "hello", "在吗", "在么"}:
+            reply = (
+                "你好！我可以帮你创建、修改或删除听写任务，创建或导入词库，也能查看学习统计。"
+                "你可以试着说：「用我的词库创建听写任务，选择所有单词」。"
+            )
+        else:
+            for keywords, capability, example in _MOCK_GUIDANCE_TOPICS:
+                if any(keyword in text for keyword in keywords):
+                    reply = (
+                        f"我理解你想处理「{excerpt}」。我可以帮你{capability}。"
+                        f"你可以这样说：「{example}」"
+                    )
+                    break
+            else:
+                reply = (
+                    f"我理解你想问「{excerpt}」，不过这个我暂时还做不到。"
+                    "目前我可以帮你创建、修改、删除听写任务，创建或导入词库，以及查看学习统计。"
+                    "你可以换个说法描述你的学习目标。"
+                )
+        return {
+            "text": reply,
+            "source": "mock",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
 
 class OpenAICompatibleAdapter:
     def __init__(
@@ -168,9 +221,19 @@ class OpenAICompatibleAdapter:
         self.backoff_seconds = backoff_seconds
         self.max_attempts = max_attempts
 
-    def _chat_json(self, system: str, user: str) -> dict[str, Any]:
+    def _chat(self, system: str, user: str, *, json_mode: bool) -> dict[str, Any]:
         if not self.settings.llm_api_key:
             raise AppError("llm_not_configured", "LLM 服务尚未配置", status_code=503)
+        body: dict[str, Any] = {
+            "model": self.settings.llm_model,
+            "temperature": 0 if json_mode else 0.4,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
         last_error: Exception | None = None
         for attempt in range(self.max_attempts):
             try:
@@ -179,15 +242,7 @@ class OpenAICompatibleAdapter:
                     headers={
                         "Authorization": (f"Bearer {self.settings.llm_api_key.get_secret_value()}")
                     },
-                    json={
-                        "model": self.settings.llm_model,
-                        "temperature": 0,
-                        "response_format": {"type": "json_object"},
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": user},
-                        ],
-                    },
+                    json=body,
                 )
                 if response.status_code == 429:
                     last_error = AppError(
@@ -204,17 +259,20 @@ class OpenAICompatibleAdapter:
                         continue
                     raise last_error
                 response.raise_for_status()
-                body = response.json()
-                content = body["choices"][0]["message"]["content"]
-                parsed = json.loads(content)
-                parsed["source"] = "llm"
-                usage = body.get("usage") or {}
-                parsed["usage"] = {
+                payload = response.json()
+                content = payload["choices"][0]["message"]["content"]
+                usage = payload.get("usage") or {}
+                token_usage = {
                     "prompt_tokens": int(usage.get("prompt_tokens", 0)),
                     "completion_tokens": int(usage.get("completion_tokens", 0)),
                     "total_tokens": int(usage.get("total_tokens", 0)),
                 }
-                return parsed
+                if json_mode:
+                    parsed = json.loads(content)
+                    parsed["source"] = "llm"
+                    parsed["usage"] = token_usage
+                    return parsed
+                return {"text": str(content or "").strip(), "source": "llm", "usage": token_usage}
             except AppError:
                 raise
             except httpx.TimeoutException as exc:
@@ -232,6 +290,12 @@ class OpenAICompatibleAdapter:
                     "llm_invalid_response", "LLM 返回结果无法解析", status_code=502
                 ) from exc
         raise AppError("llm_unavailable", "LLM 服务暂时不可用", status_code=503) from last_error
+
+    def _chat_json(self, system: str, user: str) -> dict[str, Any]:
+        return self._chat(system, user, json_mode=True)
+
+    def generate_guidance(self, system: str, user_input: str) -> dict[str, Any]:
+        return self._chat(system, user_input, json_mode=False)
 
     def classify_intent(self, text: str) -> dict[str, Any]:
         return self._chat_json(

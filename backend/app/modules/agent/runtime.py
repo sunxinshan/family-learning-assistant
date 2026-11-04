@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.core.database import Database
 from app.core.exceptions import AppError
 from app.core.models import new_id
+from app.modules.agent.guidance import FallbackGuidanceService
 from app.modules.agent.llm import LLMAdapter
 from app.modules.agent.models import AgentRun, AgentRunEvent
 from app.modules.agent.prompt_registry import PromptRegistry
@@ -34,8 +35,24 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _merge_usage(
+    current: dict[str, int] | None, extra: dict[str, int] | None
+) -> dict[str, int] | None:
+    if not extra:
+        return current
+    if not current:
+        return {key: int(value) for key, value in extra.items()}
+    merged = {key: int(value) for key, value in current.items()}
+    for key, value in extra.items():
+        merged[key] = merged.get(key, 0) + int(value)
+    return merged
+
+
 def build_agent_graph(
-    checkpointer: BaseCheckpointSaver, llm: LLMAdapter, business: AgentBusinessService
+    checkpointer: BaseCheckpointSaver,
+    llm: LLMAdapter,
+    business: AgentBusinessService,
+    guidance: FallbackGuidanceService,
 ):
     def classify(state: AgentState) -> AgentState:
         intent = llm.classify_intent(state["text"])
@@ -76,11 +93,19 @@ def build_agent_graph(
     def respond(state: AgentState) -> AgentState:
         if state.get("route") == "learning":
             return {**state, "response": business.learning_stats_text(state["user_id"])}
+        result = guidance.respond(state["text"])
+        logger.info(
+            "agent fallback guidance route=%s source=%s guide=%s failure=%s run_id=%s",
+            state.get("route"),
+            result.source,
+            result.guide_version,
+            result.failure_reason,
+            state.get("run_id"),
+        )
         return {
             **state,
-            "response": (
-                "我可以帮你创建和管理学习任务、导入词库或查看学习记录。请直接描述你的目标。"
-            ),
+            "response": result.text,
+            "token_usage": _merge_usage(state.get("token_usage"), result.usage),
         }
 
     def wait_for_confirmation(state: AgentState) -> AgentState:
@@ -168,7 +193,8 @@ class AgentRuntime:
         self.llm = llm
         self.prompt = PromptRegistry(settings.prompt_dir).get("main_agent")
         self.business = AgentBusinessService(database)
-        self.graph = build_agent_graph(checkpointer, llm, self.business)
+        self.guidance = FallbackGuidanceService(llm, settings.prompt_dir)
+        self.graph = build_agent_graph(checkpointer, llm, self.business, self.guidance)
         self._execution_lock = threading.Lock()
 
     def _config(self, conversation_id: str) -> dict[str, Any]:

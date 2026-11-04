@@ -33,12 +33,7 @@ class PromptRegistry:
         self.prompt_dir = Path(prompt_dir)
 
     def get(self, prompt_id: str, version: str = "v1") -> PromptTemplate:
-        if not prompt_id.replace("_", "").replace("-", "").isalnum():
-            raise AppError("invalid_prompt_id", "Prompt 标识无效", status_code=500)
-        path = self.prompt_dir / f"{prompt_id}.txt"
-        if not path.is_file():
-            raise AppError("prompt_not_found", f"Prompt 不存在：{prompt_id}", status_code=500)
-        content = path.read_text(encoding="utf-8")
+        content = self._read(prompt_id, ".txt")
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
         variables = tuple(
             sorted(
@@ -50,3 +45,17 @@ class PromptRegistry:
             )
         )
         return PromptTemplate(prompt_id, version, content, digest, variables)
+
+    def get_document(self, document_id: str, version: str = "v1") -> PromptTemplate:
+        """按原样加载 Markdown 文档，不解析变量，也不参与格式化。"""
+        content = self._read(document_id, ".md")
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        return PromptTemplate(document_id, version, content, digest, ())
+
+    def _read(self, prompt_id: str, suffix: str) -> str:
+        if not prompt_id.replace("_", "").replace("-", "").isalnum():
+            raise AppError("invalid_prompt_id", "Prompt 标识无效", status_code=500)
+        path = self.prompt_dir / f"{prompt_id}{suffix}"
+        if not path.is_file():
+            raise AppError("prompt_not_found", f"Prompt 不存在：{prompt_id}", status_code=500)
+        return path.read_text(encoding="utf-8")
