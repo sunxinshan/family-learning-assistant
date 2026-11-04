@@ -1,5 +1,5 @@
 import { ArrowLeft, LogOut } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Button } from '../../components/ui'
 import type { LearningTask } from '../../types/domain'
 import { taskTypeLabel } from '../../utils/format'
@@ -38,15 +38,48 @@ export const PracticeLayout = ({
   const progress = total > 0 ? Math.round((current / total) * 100) : 0
   // 手机软键盘弹起后，整页收缩到键盘上方的可视区域，按钮才不会被键盘盖住。
   const keyboard = useKeyboardViewport()
+  const mainRef = useRef<HTMLElement>(null)
+  // 键盘态下内容真的放不下时才进入「紧凑」档，继续砍次要信息。
+  const [tight, setTight] = useState(false)
   const shellStyle = keyboard.keyboardOpen
     ? ({
         '--practice-vh': `${keyboard.height}px`,
         '--practice-vt': `${keyboard.offsetTop}px`,
       } as CSSProperties)
     : undefined
+
+  // 换题时把内部滚动位置拉回顶部，否则上一题滚到一半的位置会被带到新题。
+  useEffect(() => {
+    const main = mainRef.current
+    if (main) main.scrollTop = 0
+  }, [current])
+
+  useEffect(() => {
+    if (!keyboard.keyboardOpen) {
+      setTight(false)
+      return
+    }
+    const main = mainRef.current
+    if (!main) return
+    // 只往「更紧」单向收敛：一旦压缩就不再回退，避免压缩后不再溢出又弹回来抖动。
+    const check = () => {
+      if (main.scrollHeight - main.clientHeight > 1) setTight(true)
+    }
+    const observer = new ResizeObserver(check)
+    observer.observe(main)
+    const mutations = new MutationObserver(check)
+    mutations.observe(main, { childList: true, subtree: true })
+    const frame = window.requestAnimationFrame(check)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      mutations.disconnect()
+    }
+  }, [keyboard.keyboardOpen])
+
   return (
     <div
-      className={`practice-shell${keyboard.keyboardOpen ? ' is-keyboard' : ''}`}
+      className={`practice-shell${keyboard.keyboardOpen ? ' is-keyboard' : ''}${tight ? ' is-tight' : ''}`}
       style={shellStyle}
     >
       <header className="practice-header">
@@ -73,7 +106,7 @@ export const PracticeLayout = ({
           退出
         </Button>
       </header>
-      <main className={`practice-main ${centered ? 'practice-centered' : ''}`}>
+      <main className={`practice-main ${centered ? 'practice-centered' : ''}`} ref={mainRef}>
         {groupProgress ? (
           <section className="practice-group-strip" aria-label="当前分组进度">
             <div>

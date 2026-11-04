@@ -6552,8 +6552,18 @@ ol {
 }
 
 .practice-shell.is-keyboard .answer-feedback {
-  margin-top: 8px;
-  padding: 8px 10px;
+  margin-top: 6px;
+  padding: 6px 8px;
+}
+
+/* 键盘还开着时答错反馈要一屏放下，否则内部会出现滚动条 */
+.practice-shell.is-keyboard .feedback-heading {
+  gap: 5px;
+}
+
+.practice-shell.is-keyboard .feedback-heading svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* 出答案后播放区和提示卡都是重复信息，让位给「正确答案」 */
@@ -6575,12 +6585,35 @@ ol {
 }
 
 .practice-shell.is-keyboard .dictation-answer-reveal {
-  margin-top: 6px;
-  padding: 8px;
+  margin-top: 4px;
+  padding: 6px 8px;
+}
+
+/* 上面已经有「拼写需要修正」，正确答案的标签就省了 */
+.practice-shell.is-keyboard .dictation-answer-reveal > span {
+  display: none;
 }
 
 .practice-shell.is-keyboard .dictation-answer-reveal strong {
-  font-size: 19px;
+  margin-top: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.practice-shell.is-keyboard .dictation-answer-reveal small {
+  margin-top: 1px;
+  font-size: 11px;
+}
+
+.practice-shell.is-keyboard .feedback-answer-row {
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.practice-shell.is-keyboard .feedback-answer-row .button {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 10px;
 }
 
 /* 提交/下一题按钮钉在可视区底部，内容再长也不会被键盘盖住 */
@@ -6619,5 +6652,118 @@ ol {
       opacity: 0;
       transform: translateY(-6px);
     }
+  }
+}
+
+/* 练习页（听写 / 错题复习）不露滚动条：答错后内容变高时若出现滚动条，
+   会正好压在「下一题」旁边，既难看又容易被误当成可拖动的控件。 */
+.practice-shell,
+.practice-shell .practice-main,
+.practice-shell .offline-review-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.practice-shell::-webkit-scrollbar,
+.practice-shell .practice-main::-webkit-scrollbar,
+.practice-shell .offline-review-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 键盘弹起时背景页面本身也不许滚，滚动只发生在练习页内部 */
+html.keyboard-open,
+html.keyboard-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* 内容确实放不下时（超窄屏 + 高键盘）再砍一档：分组条只留数字，卡片、反馈、按钮全部收紧 */
+.practice-shell.is-keyboard.is-tight .practice-group-strip {
+  gap: 12px;
+  margin-bottom: 6px;
+  padding: 3px 10px;
+}
+
+.practice-shell.is-keyboard.is-tight .practice-group-strip span {
+  display: none;
+}
+
+.practice-shell.is-keyboard.is-tight .dictation-practice-card,
+.practice-shell.is-keyboard.is-tight .vocab-practice-card {
+  padding: 8px 10px 0;
+}
+
+.practice-shell.is-keyboard.is-tight .answer-feedback {
+  margin-top: 4px;
+  padding: 4px 8px;
+}
+
+.practice-shell.is-keyboard.is-tight .practice-main {
+  padding: 6px 8px 4px;
+}
+
+.practice-shell.is-keyboard.is-tight .practice-card-footer {
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+/* 手机上的练习页固定一屏：页面本身不滚，内容在中间区域滚，底部按钮常驻。
+   答错后反馈变高也不会撑出整页滚动条，更不用先下拉才点得到「下一题」。 */
+@media (max-width: 768px) {
+  .practice-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .practice-header {
+    position: static;
+    flex: 0 0 auto;
+  }
+
+  .practice-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    max-width: none;
+    padding: 12px 12px 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .practice-centered {
+    align-items: stretch;
+    justify-content: flex-start;
+    min-height: 0;
+  }
+
+  .practice-card-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: var(--color-bg);
+  }
+}
+
+@media (max-width: 768px) {
+  /* 出答案后播放区、提示卡、输入框都是重复信息：手机上一屏放不下三段，
+     直接让位给「正确答案 + 你的答案 + 下一题」，答错后不用下拉找反馈。 */
+  .dictation-practice-card:has(.answer-feedback) .dictation-audio-area,
+  .dictation-practice-card:has(.answer-feedback) .dictation-hint-card,
+  .dictation-practice-card:has(.answer-feedback) .dictation-answer-area {
+    display: none;
+  }
+
+  /* 原型说明这类文字在手机上只占高度 */
+  .practice-secondary-note {
+    display: none;
   }
 }

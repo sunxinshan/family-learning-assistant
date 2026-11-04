@@ -971,10 +971,12 @@ export const DictationPracticePage = () => {
                   : '这个词会留在本组，这一轮走完后重练，连对两次才过关'}
               </p>
             ) : null}
-            <blockquote>
-              {entry.example}
-              <small>{entry.exampleTranslation}</small>
-            </blockquote>
+            {entry.example || entry.exampleTranslation ? (
+              <blockquote>
+                {entry.example}
+                <small>{entry.exampleTranslation}</small>
+              </blockquote>
+            ) : null}
           </div>
         ) : null}
 

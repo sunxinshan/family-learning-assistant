@@ -257,10 +257,12 @@ export const VocabularyPracticePage = () => {
             <p>
               <strong>{entry.word}</strong> {entry.phonetic} · {entry.meanings.join('；')}
             </p>
-            <blockquote>
-              {entry.example}
-              <small>{entry.exampleTranslation}</small>
-            </blockquote>
+            {entry.example || entry.exampleTranslation ? (
+              <blockquote>
+                {entry.example}
+                <small>{entry.exampleTranslation}</small>
+              </blockquote>
+            ) : null}
           </div>
         ) : null}
 

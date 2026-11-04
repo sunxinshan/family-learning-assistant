@@ -82,6 +82,58 @@ test.describe('手机键盘弹起时的练习页布局', () => {
     await expect(page.locator('.practice-question-meta > span:not(.badge)')).toBeVisible()
   })
 
+  test('答错提示出现后页面不出现下拉条', async ({ page }) => {
+    const suffix = uid()
+    await register(page, `KeyboardFeedback${suffix}`)
+    await openEnglishDictation(page, suffix)
+
+    await shrinkToKeyboard(page)
+    const answer = page.getByLabel('输入你听到的词语')
+    await answer.fill('aple')
+    await answer.press('Enter')
+    await expect(page.getByText('拼写需要修正')).toBeVisible()
+
+    // 反馈比答题时更高，超出一屏就会滚出一条下拉条
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('.practice-main') as HTMLElement
+      return main.scrollHeight - main.clientHeight
+    })
+    expect(overflow).toBeLessThanOrEqual(1)
+
+    await expect(page.getByText('apple', { exact: true })).toBeVisible()
+    const next = page.getByRole('button', { name: '下一题' })
+    const box = await next.boundingBox()
+    expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height + 1)
+  })
+
+  test('手机竖屏：答错提示出现后整页不出现下拉条', async ({ page }) => {
+    const suffix = uid()
+    await register(page, `NoScroll${suffix}`)
+    await openEnglishDictation(page, suffix)
+
+    const overflow = () =>
+      page.evaluate(() => {
+        const main = document.querySelector('.practice-main') as HTMLElement
+        return {
+          doc: document.documentElement.scrollHeight - window.innerHeight,
+          main: main.scrollHeight - main.clientHeight,
+        }
+      })
+
+    expect((await overflow()).doc).toBeLessThanOrEqual(1)
+
+    const answer = page.getByLabel('输入你听到的词语')
+    await answer.fill('aple')
+    await answer.press('Enter')
+    await expect(page.getByText('拼写需要修正')).toBeVisible()
+
+    // 反馈比答题时更高，以前会把整页撑出 400px 的滚动条。
+    const after = await overflow()
+    expect(after.doc).toBeLessThanOrEqual(1)
+    expect(after.main).toBeLessThanOrEqual(1)
+    await expect(page.getByRole('button', { name: '下一题' })).toBeInViewport()
+  })
+
   test('错题复习页：同样的键盘避让', async ({ page }) => {
     const suffix = uid()
     await register(page, `KeyboardWrong${suffix}`)

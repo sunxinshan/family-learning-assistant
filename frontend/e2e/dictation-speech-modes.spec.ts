@@ -87,7 +87,7 @@ test('English dictation hides the IPA until the answer is wrong', async ({ page 
   await expect(page.getByText('拼写正确')).toBeVisible()
   // 答对时也不显示音标，只保留中文含义。
   await expect(page.getByText('/ˈæpl/')).toHaveCount(0)
-  await expect(hintCard.getByText('苹果')).toBeVisible()
+  await expect(page.locator('.answer-feedback').getByText('苹果')).toBeVisible()
 
   const progress = page.locator('.practice-progress span').first()
   await expect(progress).toHaveText('2 / 2')
@@ -119,7 +119,6 @@ test('dictation without speech has no player and only speaks on a wrong answer',
   await answer.press('Enter')
   await expect(page.getByText('拼写需要修正')).toBeVisible()
   await expect(page.locator('.answer-feedback').getByText('/ˈæpl/')).toBeVisible()
-  await expect(page.locator('.dictation-hint-card').getByText('/ˈæpl/')).toBeVisible()
   const speakButton = page.getByRole('button', { name: '朗读' })
   await expect(speakButton).toBeVisible()
 
