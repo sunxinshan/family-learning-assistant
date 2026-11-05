@@ -246,3 +246,34 @@ def test_openai_adapter_enriches_only_requested_fields(settings) -> None:
     assert result["entries"][1]["phonetic"] == "píng guǒ"
     assert result["promptVersion"].startswith("v1:")
     assert "只补充 needs" in captured["messages"][0]["content"]
+
+
+def test_openai_adapter_writes_optional_llm_trace(settings, tmp_path) -> None:
+    trace_path = tmp_path / "llm-trace.jsonl"
+    settings = settings.model_copy(
+        update={
+            "llm_api_key": SecretStr("test-key"),
+            "llm_trace_enabled": True,
+            "llm_trace_path": str(trace_path),
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json=_completion('{"route":"learning"}'), request=request
+        )
+
+    adapter = OpenAICompatibleAdapter(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        backoff_seconds=0,
+    )
+    adapter.classify_intent("查看学习记录")
+
+    lines = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    assert [line["kind"] for line in lines] == ["request", "response"]
+    assert lines[0]["payload"]["messages"][1]["content"] == "查看学习记录"
+    assert lines[1]["payload"]["choices"][0]["message"]["content"]
+    raw = trace_path.read_text(encoding="utf-8")
+    assert "test-key" not in raw
+    assert "Authorization" not in raw

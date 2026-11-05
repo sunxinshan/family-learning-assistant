@@ -1,15 +1,20 @@
 import json
+import logging
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
 
 from app.core.config import Settings
+from app.core.context import request_id_var
 from app.core.exceptions import AppError
 from app.modules.agent.prompt_registry import PromptRegistry
 from app.modules.content.parser import CANONICAL_FIELDS, _rule_mapping, normalize_header
+
+logger = logging.getLogger("app.agent.llm")
 
 
 class LLMAdapter(Protocol):
@@ -243,6 +248,26 @@ class OpenAICompatibleAdapter:
         self.client = client or httpx.Client(timeout=settings.llm_timeout_seconds)
         self.backoff_seconds = backoff_seconds
         self.max_attempts = max_attempts
+        if settings.llm_trace_enabled:
+            logger.info("llm trace enabled path=%s", settings.llm_trace_path)
+
+    def _trace(self, kind: str, payload: dict[str, Any], *, attempt: int) -> None:
+        if not self.settings.llm_trace_enabled:
+            return
+        record = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "request_id": request_id_var.get(),
+            "kind": kind,
+            "attempt": attempt,
+            "payload": payload,
+        }
+        try:
+            path = Path(self.settings.llm_trace_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        except OSError:
+            logger.warning("llm trace write failed path=%s", self.settings.llm_trace_path)
 
     def _post(
         self,
@@ -253,7 +278,19 @@ class OpenAICompatibleAdapter:
             raise AppError("llm_not_configured", "LLM 服务尚未配置", status_code=503)
         last_error: Exception | None = None
         for attempt in range(self.max_attempts):
+            attempt_no = attempt + 1
             try:
+                self._trace(
+                    "request",
+                    {
+                        "model": body.get("model"),
+                        "messages": body.get("messages"),
+                        "tools": body.get("tools"),
+                        "tool_choice": body.get("tool_choice"),
+                        "temperature": body.get("temperature"),
+                    },
+                    attempt=attempt_no,
+                )
                 response = self.client.post(
                     f"{self.settings.llm_base_url.rstrip('/')}/chat/completions",
                     headers={
@@ -276,16 +313,29 @@ class OpenAICompatibleAdapter:
                         continue
                     raise last_error
                 response.raise_for_status()
-                return parser(response.json())
-            except AppError:
+                payload = response.json()
+                self._trace("response", payload, attempt=attempt_no)
+                return parser(payload)
+            except AppError as exc:
+                self._trace(
+                    "error",
+                    {"code": exc.code, "message": exc.message},
+                    attempt=attempt_no,
+                )
                 raise
             except httpx.TimeoutException as exc:
+                self._trace(
+                    "error", {"type": type(exc).__name__, "message": str(exc)}, attempt=attempt_no
+                )
                 last_error = exc
                 if attempt + 1 < self.max_attempts:
                     time.sleep(self.backoff_seconds * (2**attempt))
                     continue
                 raise AppError("llm_timeout", "LLM 请求超时，请稍后重试", status_code=504) from exc
             except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
+                self._trace(
+                    "error", {"type": type(exc).__name__, "message": str(exc)}, attempt=attempt_no
+                )
                 last_error = exc
                 if attempt + 1 < self.max_attempts:
                     time.sleep(self.backoff_seconds * (2**attempt))

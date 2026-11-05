@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_model: str = "gpt-4.1-mini"
     llm_timeout_seconds: float = 45.0
+    # 仅测试/排障使用：把每次 LLM 请求与响应写入 JSONL，默认关闭。
+    llm_trace_enabled: bool = False
+    llm_trace_path: str = "./data/llm-trace.jsonl"
     # Phase 1 灰度开关：开启后 task_create 走原生 Tool Calling，关闭时保留原正则链路。
     agent_tool_calling_enabled: bool = False
     cors_origins: list[str] = [

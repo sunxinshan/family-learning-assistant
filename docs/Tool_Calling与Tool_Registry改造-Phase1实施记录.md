@@ -108,6 +108,7 @@ Handler 只做确定性解析：
 - 运行事件新增 `tool_status`，字段与前端 `ToolExecution` 对齐；前端已有执行卡片，可直接展开参数和结果。
 - `agent_run_events` 保留事件序号，支持断线重放。
 - 日志（`app.agent.tools`）记录工具名、错误码、run_id、耗时。
+- 测试环境可开启 `FLA_LLM_TRACE_ENABLED=true`，把每次请求的 messages/tools 和响应 content/tool_calls 追加到 `FLA_LLM_TRACE_PATH`（默认 `./data/llm-trace.jsonl`），不记录 API Key。
 - `token_usage` 合并分类调用与工具调用。
 
 ## 8. 测试
