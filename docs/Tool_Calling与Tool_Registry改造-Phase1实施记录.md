@@ -145,3 +145,24 @@ cd backend
 - 验证时设置 `FLA_AGENT_TOOL_CALLING_ENABLED=true`（生产需重启）。
 - 回滚：删除该环境变量或设为 `false` 后重启；无需数据库迁移。
 - 前端产物有变化（消息类型与渲染），需随发布一起构建。
+
+## 11. 多轮上下文与候选词库收敛（2026-11-05）
+
+### 对话历史
+
+- `AgentRuntime._recent_history` 从 `conversation_messages` 取最近 6 条 `kind=text` 的 user/assistant 消息，排除当前 run，每条截断 500 字。
+- `AgentState.history` 传入图；`classify_intent(text, history)` 请求变为 `system + history + 当前输入`。
+- `TaskCreateToolWorkflow` 的 tool-calling messages 同样带 history。
+- 分类 Prompt 增加规则：当前消息可能是对上一轮追问的简短回答，需结合历史保持业务路由。
+
+### 候选词库
+
+- 不再把全部词库写入 System Prompt。
+- 每学科最多 3 个候选，排序：被当前输入/历史点名的词库 → 个人词库 → 最近更新。
+- 被点名的词库即使不在前 3 也会强制纳入；Prompt 标注该学科词库总数和「以下是候选」。
+- 追问时要求列出候选名称，下一轮可用「第一个」或名称回答。
+
+### 验证
+
+- 本地真实 DeepSeek：第一轮「创建任务」→ 列出 3 个候选并追问；第二轮「用「历史库一」」→ 工具调用成功并生成预览。
+- 测试 106 passed，新增候选筛选与 history 窗口单测。

@@ -41,3 +41,5 @@
 - Workflow 只向 LLM 暴露当前场景需要的工具，不能一次性暴露全部 Registry 工具。
 - 预览类工具只读；正式写入必须留在用户确认后的 Workflow Node 中调用 Service。
 - 工具调用与结果分别写入 `conversation_messages`（`tool_call` / `tool_result`），通过 `tool_call_id` 关联，并发送 `tool_status` 事件。
+- 意图识别和工具流程必须携带最近 6 条自然语言历史，不能只发送当前一句；历史中排除工具消息并做长度截断。
+- 任务创建的词库候选每学科最多 3 个，排序为「点名 → 个人库 → 最近更新」；被点名的词库必须强制纳入。
