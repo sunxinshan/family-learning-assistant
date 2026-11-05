@@ -229,4 +229,9 @@ test('Chinese dictation speaks the hanzi word directly instead of reading pinyin
   }
   expect(spoken.map((item) => item.text)).not.toContain('píng guǒ')
   await expect(page.getByText('píng guǒ', { exact: true })).toBeVisible()
+  // 语文听写页只给拼音，不显示词语本身（词库里的「中文含义」也是词语，勾出来等于给答案）。
+  const card = page.locator('.dictation-practice-card')
+  await expect(card.getByText('苹果', { exact: true })).toHaveCount(0)
+  await expect(card.getByText('中文含义')).toHaveCount(0)
+  await expect(card.getByText('语文拼音')).toBeVisible()
 })

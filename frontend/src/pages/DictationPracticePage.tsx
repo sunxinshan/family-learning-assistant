@@ -168,8 +168,19 @@ export const DictationPracticePage = () => {
       : '错题复习'
     : undefined
   const answeredWrong = Boolean(feedback && !feedback.correct)
+  const isChineseDictation = task?.subject === 'chinese'
   // 英语听写的音标等于把答案拆成音节摆出来，只在答错后揭示；语文拼音不是答案本身，始终显示。
-  const showPhonetic = task?.subject === 'chinese' || answeredWrong
+  const showPhonetic = isChineseDictation || answeredWrong
+  // 语文词库的「中文含义」多数就是词语本身（春天 → 春天），摆出来等于把答案写在页面上，
+  // 所以这类含义不展示；真写了释义的（如「形容景色优美」）照常显示。
+  const meaningTextOf = (target: WordEntry | undefined) => {
+    const text = target?.meanings.filter(Boolean).join('；') ?? ''
+    const word = target?.word.trim() ?? ''
+    if (!text || !isChineseDictation || !word) return text
+    return target?.meanings.some((meaning) => meaning.includes(word)) ? '' : text
+  }
+  const entryMeaningText = meaningTextOf(entry)
+  const offlineMeaningText = meaningTextOf(offlineEntry)
 
   useEffect(() => {
     if (!taskId || !currentUser) {
@@ -562,7 +573,7 @@ export const DictationPracticePage = () => {
                   <span className="offline-review-index">{String(index + 1).padStart(2, '0')}</span>
                   <div>
                     <strong>{word.word}</strong>
-                    <p>{word.phonetic} · {word.meanings.join('；')}</p>
+                    <p>{[word.phonetic, meaningTextOf(word)].filter(Boolean).join(' · ')}</p>
                   </div>
                   <Badge tone={wrongEntryIds.includes(word.id) ? 'danger' : 'success'}>
                     {wrongEntryIds.includes(word.id) ? '写错了' : '正确'}
@@ -648,17 +659,19 @@ export const DictationPracticePage = () => {
                   }`
                 : '页面提示'}
             </span>
-            <div className={`dictation-hint-values ${showPhonetic ? '' : 'is-single'}`}>
+            <div className={`dictation-hint-values ${showPhonetic && offlineMeaningText ? '' : 'is-single'}`}>
               {showPhonetic ? (
                 <div>
                   <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
                   <strong>{offlineEntry?.phonetic || '暂无'}</strong>
                 </div>
               ) : null}
-              <div>
-                <small>中文含义</small>
-                <strong>{offlineEntry?.meanings.join('；') || '暂无'}</strong>
-              </div>
+              {offlineMeaningText ? (
+                <div>
+                  <small>中文含义</small>
+                  <strong>{offlineMeaningText}</strong>
+                </div>
+              ) : null}
             </div>
           </div>
           {speechEnabled && config.playbackMode === 'auto' ? (
@@ -867,7 +880,11 @@ export const DictationPracticePage = () => {
             </button>
             <div>
               <h1>{playing ? '正在播放…' : '进入词语后自动朗读'}</h1>
-              <p>按任务设置朗读单词或中文含义，页面同时显示音标和中文含义</p>
+              <p>
+                {isChineseDictation
+                  ? '按任务设置直接读出词语，页面只显示拼音，不显示词语本身'
+                  : '按任务设置朗读单词或中文含义，页面同时显示音标和中文含义'}
+              </p>
             </div>
             <Button size="sm" icon={RotateCcw} onClick={() => speakEntry(entry)}>重播</Button>
           </div>
@@ -877,25 +894,27 @@ export const DictationPracticePage = () => {
           <span>
             {speechEnabled
               ? `朗读内容：${
-                  config.hint === 'phonetic'
-                    ? task.subject === 'english'
+                  isChineseDictation
+                    ? '词语发音（直接读出）'
+                    : config.hint === 'phonetic'
                       ? '英语单词'
-                      : '语文拼音'
-                    : '中文含义'
+                      : '中文含义'
                 }`
               : '页面提示'}
           </span>
-          <div className={`dictation-hint-values ${showPhonetic ? '' : 'is-single'}`}>
+          <div className={`dictation-hint-values ${showPhonetic && entryMeaningText ? '' : 'is-single'}`}>
             {showPhonetic ? (
               <div>
-                <small>{task.subject === 'english' ? '英语音标' : '语文拼音'}</small>
+                <small>{isChineseDictation ? '语文拼音' : '英语音标'}</small>
                 <strong>{entry.phonetic || '暂无'}</strong>
               </div>
             ) : null}
-            <div>
-              <small>中文含义</small>
-              <strong>{entry.meanings.join('；') || '暂无'}</strong>
-            </div>
+            {entryMeaningText ? (
+              <div>
+                <small>中文含义</small>
+                <strong>{entryMeaningText}</strong>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -946,10 +965,15 @@ export const DictationPracticePage = () => {
             <div className="dictation-answer-reveal">
               <span>正确答案</span>
               <strong>{entry.word}</strong>
-              <small>
-                {showPhonetic ? `${entry.phonetic} · ` : ''}
-                {entry.meanings.join('；')}
-              </small>
+              {[showPhonetic ? entry.phonetic : '', entryMeaningText]
+                .filter(Boolean)
+                .join(' · ') ? (
+                <small>
+                  {[showPhonetic ? entry.phonetic : '', entryMeaningText]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </small>
+              ) : null}
             </div>
             {!feedback.correct ? (
               <div className="feedback-answer-row">
