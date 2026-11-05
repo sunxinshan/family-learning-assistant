@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   Headphones,
   Info,
-  ListChecks,
   Play,
   ShieldCheck,
 } from 'lucide-react'
@@ -23,6 +22,7 @@ import {
   TextInput,
 } from '../components/ui'
 import { TaskAdvancedSettings, TaskDictationSettings } from '../features/task/TaskSettingsFields'
+import { TaskWordPicker } from '../features/task/TaskWordPicker'
 import { useAppStore } from '../stores/AppStoreContext'
 import type {
   DictationHint,
@@ -353,66 +353,24 @@ export const TaskCreatePage = () => {
                 </Field>
               </div>
 
-              <div className="word-picker-panel">
-                <div className="word-picker-heading">
-                  <div>
-                    <h3>选择词库词条</h3>
-                    <p>序号输入与勾选状态实时同步；支持 all、2-10、4,8 等表达。</p>
-                  </div>
-                  <Badge tone={allSelected ? 'success' : 'neutral'}>
-                    已选 {selectedCount} / {selectedLibrary.entries.length}
-                  </Badge>
-                </div>
-                <div className="word-selection-row">
-                  <TextInput
-                    value={form.wordSelection}
-                    onChange={(event) => setForm({ ...form, wordSelection: event.target.value })}
-                    placeholder="例如：2-10, 4, 8"
-                    aria-label="选择词条序号"
-                  />
-                  <Button
-                    size="sm"
-                    icon={ListChecks}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        wordSelection: allSelected
-                          ? ''
-                          : selectedLibrary.entries.length <= 1
-                            ? '1'
-                            : `1-${selectedLibrary.entries.length}`,
-                      })
-                    }
-                  >
-                    {allSelected ? '取消全选' : '全选'}
-                  </Button>
-                </div>
-                {selection.invalidTokens.length ? (
-                  <InlineError>
-                    无法识别：{selection.invalidTokens.join('、')}。请输入有效序号，例如 2-10, 4, 8。
-                  </InlineError>
-                ) : null}
-                <div className="word-picker-list">
-                  {selectedLibrary.entries.map((entry, index) => (
-                    <label
-                      key={entry.id}
-                      className={`word-picker-row ${selectedIds.has(entry.id) ? 'is-selected' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(entry.id)}
-                        onChange={() => toggleEntry(entry.id)}
-                      />
-                      <span className="word-picker-index">{String(index + 1).padStart(2, '0')}</span>
-                      <div className="word-picker-word">
-                        <strong>{entry.word}</strong>
-                        <span>{entry.phonetic}</span>
-                      </div>
-                      <p>{entry.meanings.join('；')}</p>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <TaskWordPicker
+                library={selectedLibrary}
+                selectionText={form.wordSelection}
+                selectedIds={selectedIds}
+                invalidTokens={selection.invalidTokens}
+                onSelectionTextChange={(wordSelection) => setForm({ ...form, wordSelection })}
+                onToggleEntry={toggleEntry}
+                onToggleAll={() =>
+                  setForm({
+                    ...form,
+                    wordSelection: allSelected
+                      ? ''
+                      : selectedLibrary.entries.length <= 1
+                        ? '1'
+                        : `1-${selectedLibrary.entries.length}`,
+                  })
+                }
+              />
 
               <TaskAdvancedSettings
                 type={form.type}

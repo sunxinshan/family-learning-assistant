@@ -187,9 +187,6 @@ export const ActionPreview = ({
 
       {editableTask && editedDraft ? (
         <div className="task-action-editor-wrap">
-          <div className="task-action-editor-note">
-            任务确认前可继续修改全部配置；勾选与序号输入保持同步。
-          </div>
           <TaskActionEditor
             action={effectiveAction}
             libraries={libraries}

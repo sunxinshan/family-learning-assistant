@@ -69,9 +69,7 @@ test('real HTTP flow: server import, agent confirmation, active restore, offline
   await expect(page.getByLabel('学习类型')).toBeDisabled()
   await page.getByLabel('任务模式').selectOption('long_term')
   await page.getByLabel('每组数量').fill('1')
-  await expect(page.locator('.task-action-group-section')).toHaveCount(2)
-  await expect(page.getByText('第 1 组', { exact: true })).toBeVisible()
-  await expect(page.getByText('第 2 组', { exact: true })).toBeVisible()
+  await expect(page.locator('.task-action-editor .word-picker-row.is-selected')).toHaveCount(2)
   await page.getByRole('button', { name: '取消全选' }).click()
   await expect(page.getByText('已选 0 / 2')).toBeVisible()
 
