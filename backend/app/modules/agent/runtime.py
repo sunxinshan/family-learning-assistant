@@ -211,6 +211,7 @@ class AgentRuntime:
         self.guidance = FallbackGuidanceService(llm, settings.prompt_dir)
         self.tool_registry = ToolRegistry(self.business)
         self.tool_executor = ToolExecutor(self.tool_registry)
+        logger.info("agent tool calling enabled=%s", settings.agent_tool_calling_enabled)
         self.tool_workflow = (
             TaskCreateToolWorkflow(
                 llm,

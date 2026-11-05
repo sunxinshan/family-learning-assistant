@@ -113,6 +113,14 @@ class TaskCreateToolWorkflow:
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         trace = self._trace(call, tool, outcome, started_at, duration_ms)
+        logger.info(
+            "task create tool executed tool=%s ok=%s code=%s duration_ms=%s run_id=%s",
+            trace["name"],
+            outcome.ok,
+            outcome.error_code,
+            duration_ms,
+            state.get("run_id"),
+        )
 
         if not outcome.ok:
             logger.info(
