@@ -23,7 +23,7 @@ from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.infrastructure.checkpoint import CheckpointerManager
 from app.modules.admin.router import router as admin_router
-from app.modules.agent.llm import create_llm_adapter
+from app.modules.agent.llm import LLMAdapter, create_llm_adapter
 from app.modules.agent.router import router as agent_router
 from app.modules.agent.runtime import AgentRuntime
 from app.modules.content.router import router as content_router
@@ -37,7 +37,7 @@ from app.modules.user.router import router as user_router
 from app.modules.vocabulary.router import router as vocabulary_router
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, llm: LLMAdapter | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     configure_logging(resolved_settings.log_level, resolved_settings.log_format)
     logger = logging.getLogger("app")
@@ -58,7 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 database=database,
                 checkpointer=checkpointer,
                 settings=resolved_settings,
-                llm=create_llm_adapter(resolved_settings),
+                llm=llm or create_llm_adapter(resolved_settings),
             )
             try:
                 yield

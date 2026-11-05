@@ -30,3 +30,14 @@
 
 - 兜底阶段只解释和引导，不执行业务操作、不修改业务数据、不新增消息类型或前端交互。
 - 意图识别成功后的现有流程（Python 文本解析、参数拼装、业务写入）不因引导能力改动而变化。
+
+## Tool Calling 约定
+
+- 灰度开关：`FLA_AGENT_TOOL_CALLING_ENABLED`，默认关闭；关闭时必须保留原业务链路。
+- Registry 只注册有真实 Handler 的工具，不再保留占位实现。
+- 工具内部名可以使用点号（如 `task.create.preview`），但 Provider 侧名称会转换为下划线；新增工具必须避免转换后重名。
+- 工具参数 Schema 不得包含 `user_id`、`role` 等身份字段，身份由 Executor 注入；Schema 必须设置 `extra="forbid"`。
+- 新增工具必须补齐：`description`、`args_schema`、`workflows`、真实 Handler、Executor/Registry 测试与端到端测试。
+- Workflow 只向 LLM 暴露当前场景需要的工具，不能一次性暴露全部 Registry 工具。
+- 预览类工具只读；正式写入必须留在用户确认后的 Workflow Node 中调用 Service。
+- 工具调用与结果分别写入 `conversation_messages`（`tool_call` / `tool_result`），通过 `tool_call_id` 关联，并发送 `tool_status` 事件。

@@ -233,6 +233,7 @@ export type ChatMessageKind =
   | 'file'
   | 'action_preview'
   | 'execution'
+  | 'tool_call'
   | 'error'
   | 'progress'
 

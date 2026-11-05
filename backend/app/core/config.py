@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_model: str = "gpt-4.1-mini"
     llm_timeout_seconds: float = 45.0
+    # Phase 1 灰度开关：开启后 task_create 走原生 Tool Calling，关闭时保留原正则链路。
+    agent_tool_calling_enabled: bool = False
     cors_origins: list[str] = [
         "http://127.0.0.1:5173",
         "http://localhost:5173",

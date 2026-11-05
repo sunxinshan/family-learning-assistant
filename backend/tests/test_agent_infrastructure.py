@@ -9,7 +9,8 @@ from pydantic import SecretStr
 from app.core.exceptions import AppError
 from app.modules.agent.llm import OpenAICompatibleAdapter
 from app.modules.agent.prompt_registry import PromptRegistry
-from app.modules.agent.tools import ToolRegistry
+from app.modules.agent.tool_schemas import EmptyArgs
+from app.modules.agent.tools import ToolDefinition, ToolRegistry
 
 
 def login(client: TestClient, nickname: str = "Alice", password: str = "demo123") -> str:
@@ -93,17 +94,39 @@ def test_prompt_registry_version_hash_and_variable_validation(tmp_path) -> None:
     assert missing_prompt.value.code == "invalid_prompt_id"
 
 
-def test_tool_registry_permission_filtering(client: TestClient, app: FastAPI) -> None:
-    registry = ToolRegistry(app.state.agent_runtime.business)
-    user_tools = registry.available("user")
-    admin_tools = registry.available("admin")
-    assert "learning.stats" in {tool["name"] for tool in user_tools}
-    assert "admin.execution_detail" not in {tool["name"] for tool in user_tools}
-    assert "admin.execution_detail" in {tool["name"] for tool in admin_tools}
+def test_tool_registry_filters_and_converts_tools(client: TestClient, app: FastAPI) -> None:
+    business = app.state.agent_runtime.business
+    admin_tool = ToolDefinition(
+        name="admin.execution_detail",
+        label="查看完整执行详情",
+        description="管理员查看执行详情",
+        args_schema=EmptyArgs,
+        required_role="admin",
+        workflows=frozenset({"admin"}),
+        handler=lambda _context, _args: {"scope": "admin"},
+    )
+    registry = ToolRegistry(
+        business, definitions=[*ToolRegistry._default_tools(business), admin_tool]
+    )
 
-    forbidden = registry.invoke("admin.execution_detail", "user-1", "user")
-    assert forbidden.ok is False
-    assert forbidden.error_code == "forbidden"
+    user_tools = {tool["name"] for tool in registry.available("user")}
+    admin_tools = {tool["name"] for tool in registry.available("admin")}
+    assert "learning.stats" in user_tools
+    assert "task.create_preview" in user_tools
+    assert "admin.execution_detail" not in user_tools
+    assert "admin.execution_detail" in admin_tools
+
+    assert registry.get("task_create_preview") is registry.get("task.create_preview")
+    assert registry.get("missing.tool") is None
+    assert [tool.name for tool in registry.for_workflow("user", "task_create")] == [
+        "task.create_preview"
+    ]
+    assert registry.for_workflow("user", "admin") == []
+
+    schema = registry.to_openai_tools("user", "task_create")[0]["function"]
+    assert schema["name"] == "task_create_preview"
+    assert "library_id" in schema["parameters"]["properties"]
+    assert "user_id" not in schema["parameters"]["properties"]
 
 
 def test_execution_details_are_redacted_and_admin_visible(client: TestClient) -> None:

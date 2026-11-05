@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.core.database import Database
 from app.core.exceptions import AppError
 from app.core.models import new_id
+from app.modules.agent.executor import ToolExecutor
 from app.modules.agent.guidance import FallbackGuidanceService
 from app.modules.agent.llm import LLMAdapter
 from app.modules.agent.models import AgentRun, AgentRunEvent
@@ -25,6 +26,8 @@ from app.modules.agent.service import (
     _hash_payload,
     _prepare_task_action,
 )
+from app.modules.agent.tool_workflow import TaskCreateToolWorkflow
+from app.modules.agent.tools import ToolRegistry
 from app.modules.conversation.repository import ConversationRepository
 from app.modules.conversation.service import ConversationService
 
@@ -53,6 +56,7 @@ def build_agent_graph(
     llm: LLMAdapter,
     business: AgentBusinessService,
     guidance: FallbackGuidanceService,
+    tool_workflow: TaskCreateToolWorkflow | None = None,
 ):
     def classify(state: AgentState) -> AgentState:
         intent = llm.classify_intent(state["text"])
@@ -75,6 +79,11 @@ def build_agent_graph(
         }:
             route = "unclear"
         return {**state, "route": route, "token_usage": intent.get("usage")}
+
+    def task_create_with_tools(state: AgentState) -> AgentState:
+        if tool_workflow is None:
+            return _prepare_task_action(state, business)
+        return tool_workflow.run(state)
 
     def prepare(state: AgentState) -> AgentState:
         route = state.get("route")
@@ -146,6 +155,8 @@ def build_agent_graph(
         }
 
     def route_after_classify(state: AgentState) -> str:
+        if state.get("route") == "task_create" and tool_workflow is not None:
+            return "tool_create"
         if state.get("route") in {
             "task_create",
             "task_update",
@@ -166,14 +177,18 @@ def build_agent_graph(
 
     graph = StateGraph(AgentState)
     graph.add_node("classify", classify)
+    graph.add_node("tool_create", task_create_with_tools)
     graph.add_node("prepare", prepare)
     graph.add_node("respond", respond)
     graph.add_node("wait", wait_for_confirmation)
     graph.add_edge(START, "classify")
     graph.add_conditional_edges(
-        "classify", route_after_classify, {"prepare": "prepare", "respond": "respond"}
+        "classify",
+        route_after_classify,
+        {"prepare": "prepare", "tool_create": "tool_create", "respond": "respond"},
     )
     graph.add_conditional_edges("prepare", after_prepare, {"wait": "wait", END: END})
+    graph.add_conditional_edges("tool_create", after_prepare, {"wait": "wait", END: END})
     graph.add_conditional_edges("wait", after_confirm, {"wait": "wait", END: END})
     graph.add_edge("respond", END)
     return graph.compile(checkpointer=checkpointer)
@@ -194,7 +209,22 @@ class AgentRuntime:
         self.prompt = PromptRegistry(settings.prompt_dir).get("main_agent")
         self.business = AgentBusinessService(database)
         self.guidance = FallbackGuidanceService(llm, settings.prompt_dir)
-        self.graph = build_agent_graph(checkpointer, llm, self.business, self.guidance)
+        self.tool_registry = ToolRegistry(self.business)
+        self.tool_executor = ToolExecutor(self.tool_registry)
+        self.tool_workflow = (
+            TaskCreateToolWorkflow(
+                llm,
+                self.business,
+                self.tool_registry,
+                self.tool_executor,
+                settings.prompt_dir,
+            )
+            if settings.agent_tool_calling_enabled
+            else None
+        )
+        self.graph = build_agent_graph(
+            checkpointer, llm, self.business, self.guidance, self.tool_workflow
+        )
         self._execution_lock = threading.Lock()
 
     def _config(self, conversation_id: str) -> dict[str, Any]:
@@ -244,14 +274,77 @@ class AgentRuntime:
         return ConversationService(ConversationRepository(session))
 
     def _store_message(
-        self, conversation_service, conversation, content: dict[str, Any], run_id: str
+        self,
+        conversation_service,
+        conversation,
+        content: dict[str, Any],
+        run_id: str,
+        *,
+        message_type: str | None = None,
+        tool_call_id: str | None = None,
     ) -> None:
         conversation_service.append_message(
             conversation,
-            message_type=str(content.get("role", "assistant")),
+            message_type=message_type or str(content.get("role", "assistant")),
             content=content,
             run_id=run_id,
+            tool_call_id=tool_call_id,
         )
+
+    def _persist_tool_trace(
+        self,
+        repository: AgentRepository,
+        run: AgentRun,
+        conversation_service,
+        conversation,
+        trace: dict[str, Any],
+    ) -> None:
+        execution = {
+            "id": trace["id"],
+            "tool": trace["name"],
+            "label": trace["label"],
+            "status": "success" if trace.get("ok") else "error",
+            "args": trace.get("arguments") or {},
+            "result": trace.get("result"),
+            "durationMs": trace.get("duration_ms") or 0,
+            "startedAt": trace.get("started_at"),
+        }
+        if not trace.get("ok"):
+            execution["error"] = trace.get("error_message") or trace.get("error_code")
+        self._store_message(
+            conversation_service,
+            conversation,
+            {
+                "id": new_id(),
+                "role": "tool",
+                "kind": "tool_call",
+                "content": trace["label"],
+                "toolCallId": trace["id"],
+                "tool": trace["name"],
+                "args": trace.get("arguments") or {},
+                "createdAt": trace.get("started_at"),
+            },
+            run.id,
+            message_type="tool_call",
+            tool_call_id=trace["id"],
+        )
+        self._store_message(
+            conversation_service,
+            conversation,
+            {
+                "id": new_id(),
+                "role": "tool",
+                "kind": "execution",
+                "content": trace["label"],
+                "toolCallId": trace["id"],
+                "createdAt": _now().isoformat(),
+                "execution": execution,
+            },
+            run.id,
+            message_type="tool_result",
+            tool_call_id=trace["id"],
+        )
+        self._append_event(repository, run, "tool_status", execution)
 
     def _record_failure(
         self,
@@ -294,9 +387,8 @@ class AgentRuntime:
                     run = repository.get_run(run_id)
                     if not run:
                         return
-                    conversation = self._conversation_service(session).get_owned(
-                        conversation_id, user_id
-                    )
+                    conversations = self._conversation_service(session)
+                    conversation = conversations.get_owned(conversation_id, user_id)
                     self.graph.invoke(
                         {
                             "user_id": user_id,
@@ -307,14 +399,19 @@ class AgentRuntime:
                             "material_id": material_id,
                             "pending_action": None,
                             "draft_version": 0,
+                            "tool_trace": None,
                         },
                         self._config(conversation_id),
                     )
                     values = self.graph.get_state(self._config(conversation_id)).values
                     pending_action = values.get("pending_action")
                     response = values.get("response", "")
+                    for trace in values.get("tool_trace") or []:
+                        self._persist_tool_trace(
+                            repository, run, conversations, conversation, trace
+                        )
                     self._store_message(
-                        self._conversation_service(session),
+                        conversations,
                         conversation,
                         {
                             "id": new_id(),

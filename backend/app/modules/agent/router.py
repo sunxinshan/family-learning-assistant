@@ -13,7 +13,6 @@ from app.modules.agent.schemas import (
     AgentRunOut,
     AgentRunRequest,
 )
-from app.modules.agent.tools import ToolRegistry
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -91,7 +90,7 @@ def get_run_details(
             raise AppError("run_not_found", "执行记录不存在", status_code=404)
         events = repository.list_events(run.id)
         duration_ms = max(0, int((run.updated_at - run.created_at).total_seconds() * 1000))
-        tools = ToolRegistry(request.app.state.agent_runtime.business).available(context.role)
+        tools = request.app.state.agent_runtime.tool_registry.available(context.role)
         return AgentRunDetailOut.model_validate(
             {
                 "id": run.id,

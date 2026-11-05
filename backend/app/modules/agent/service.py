@@ -9,6 +9,7 @@ from app.core.database import Database
 from app.core.exceptions import AppError
 from app.core.models import new_id
 from app.modules.agent.llm import create_llm_adapter
+from app.modules.agent.tool_schemas import TaskCreatePreviewArgs
 from app.modules.content.repository import ContentRepository
 from app.modules.content.schemas import ContentExtractionUpdate
 from app.modules.content.service import ContentService
@@ -45,6 +46,7 @@ class AgentState(TypedDict, total=False):
     config_hash: str | None
     token_usage: dict[str, int] | None
     links: list[dict[str, str]] | None
+    tool_trace: list[dict[str, Any]] | None
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
@@ -301,6 +303,28 @@ def _parse_tags(text: str) -> list[str]:
     ]
 
 
+def _resolve_selection(args: "TaskCreatePreviewArgs", entry_ids: list[str]) -> list[str]:
+    if args.selection_mode == "all":
+        return list(entry_ids)
+    if args.selection_mode == "prefix":
+        if not args.prefix_count:
+            raise AppError("invalid_arguments", "请指定要选择的词条数量", status_code=422)
+        return entry_ids[: args.prefix_count]
+    if args.selection_mode == "range":
+        start = args.range_start or 1
+        end = args.range_end or len(entry_ids)
+        if start > end:
+            raise AppError("invalid_arguments", "词条区间起始值不能大于结束值", status_code=422)
+        return entry_ids[max(start - 1, 0) : min(end, len(entry_ids))]
+    if args.selection_mode == "ids":
+        allowed = set(entry_ids)
+        unknown = [entry_id for entry_id in args.entry_ids if entry_id not in allowed]
+        if unknown:
+            raise AppError("invalid_entry_selection", "部分词条不属于该词库", status_code=422)
+        return list(dict.fromkeys(args.entry_ids))
+    return []
+
+
 class AgentBusinessService:
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -312,6 +336,50 @@ class AgentBusinessService:
     def available_tasks(self, user_id: str) -> list[Any]:
         with self.database.session() as session:
             return TaskService(TaskRepository(session), session).list(user_id)
+
+    def build_task_create_preview(
+        self, user_id: str, role: str, run_id: str, args: TaskCreatePreviewArgs
+    ) -> dict[str, Any]:
+        """按结构化参数生成任务创建预览。
+
+        只做确定性的选择解析、范围校验和默认值补齐，不读取用户原始文本。
+        """
+        with self.database.session() as session:
+            library = VocabularyService(VocabularyRepository(session)).get_accessible(
+                args.library_id, user_id, role
+            )
+        entry_ids = [entry.id for entry in library.entries]
+        if not entry_ids:
+            raise AppError("empty_library", "该词库还没有词条", status_code=422)
+        selected_ids = _resolve_selection(args, entry_ids)
+        if not selected_ids:
+            raise AppError("no_entries_selected", "请至少选择一个词条", status_code=422)
+        count = len(selected_ids)
+        words_per_group = (
+            count
+            if args.task_mode == "fixed"
+            else min(max(args.words_per_group or min(5, count), 1), count)
+        )
+        draft = {
+            "name": args.name,
+            "type": "dictation",
+            "mode": args.task_mode,
+            "targetCount": count,
+            "libraryId": library.id,
+            "selectedEntryIds": selected_ids,
+            "wordsPerGroup": words_per_group,
+            "repeatUntilCorrect": args.repeat_until_correct,
+            "dictation": {
+                "mode": args.dictation_mode,
+                "playbackMode": args.playback_mode,
+                "intervalSeconds": args.interval_seconds if args.playback_mode == "auto" else 8,
+                "hint": "phonetic" if library.subject == "chinese" else args.hint,
+                "repeatCount": args.repeat_count,
+                "speechEnabled": args.speech_enabled,
+            },
+        }
+        action = _build_task_create_action(run_id, draft, library.name)
+        return _decorate_action(action)
 
     def _find_task(self, user_id: str, text: str) -> Any:
         tasks = self.available_tasks(user_id)

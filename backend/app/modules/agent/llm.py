@@ -1,5 +1,6 @@
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -17,6 +18,14 @@ class LLMAdapter(Protocol):
     def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]: ...
 
     def generate_guidance(self, system: str, user_input: str) -> dict[str, Any]: ...
+
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        temperature: float = 0.2,
+    ) -> dict[str, Any]: ...
 
 
 _MOCK_WORDS = {
@@ -206,6 +215,20 @@ class MockLLMAdapter:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        temperature: float = 0.2,
+    ) -> dict[str, Any]:
+        return {
+            "text": "（Mock）当前没有可执行的工具调用。",
+            "tool_calls": [],
+            "source": "mock",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
 
 class OpenAICompatibleAdapter:
     def __init__(
@@ -221,19 +244,13 @@ class OpenAICompatibleAdapter:
         self.backoff_seconds = backoff_seconds
         self.max_attempts = max_attempts
 
-    def _chat(self, system: str, user: str, *, json_mode: bool) -> dict[str, Any]:
+    def _post(
+        self,
+        body: dict[str, Any],
+        parser: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> dict[str, Any]:
         if not self.settings.llm_api_key:
             raise AppError("llm_not_configured", "LLM 服务尚未配置", status_code=503)
-        body: dict[str, Any] = {
-            "model": self.settings.llm_model,
-            "temperature": 0 if json_mode else 0.4,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        }
-        if json_mode:
-            body["response_format"] = {"type": "json_object"}
         last_error: Exception | None = None
         for attempt in range(self.max_attempts):
             try:
@@ -259,20 +276,7 @@ class OpenAICompatibleAdapter:
                         continue
                     raise last_error
                 response.raise_for_status()
-                payload = response.json()
-                content = payload["choices"][0]["message"]["content"]
-                usage = payload.get("usage") or {}
-                token_usage = {
-                    "prompt_tokens": int(usage.get("prompt_tokens", 0)),
-                    "completion_tokens": int(usage.get("completion_tokens", 0)),
-                    "total_tokens": int(usage.get("total_tokens", 0)),
-                }
-                if json_mode:
-                    parsed = json.loads(content)
-                    parsed["source"] = "llm"
-                    parsed["usage"] = token_usage
-                    return parsed
-                return {"text": str(content or "").strip(), "source": "llm", "usage": token_usage}
+                return parser(response.json())
             except AppError:
                 raise
             except httpx.TimeoutException as exc:
@@ -290,6 +294,82 @@ class OpenAICompatibleAdapter:
                     "llm_invalid_response", "LLM 返回结果无法解析", status_code=502
                 ) from exc
         raise AppError("llm_unavailable", "LLM 服务暂时不可用", status_code=503) from last_error
+
+    @staticmethod
+    def _token_usage(payload: dict[str, Any]) -> dict[str, int]:
+        usage = payload.get("usage") or {}
+        return {
+            "prompt_tokens": int(usage.get("prompt_tokens", 0)),
+            "completion_tokens": int(usage.get("completion_tokens", 0)),
+            "total_tokens": int(usage.get("total_tokens", 0)),
+        }
+
+    def _chat(self, system: str, user: str, *, json_mode: bool) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": self.settings.llm_model,
+            "temperature": 0 if json_mode else 0.4,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+
+        def parse(payload: dict[str, Any]) -> dict[str, Any]:
+            content = payload["choices"][0]["message"]["content"]
+            usage = self._token_usage(payload)
+            if json_mode:
+                parsed = json.loads(content)
+                parsed["source"] = "llm"
+                parsed["usage"] = usage
+                return parsed
+            return {"text": str(content or "").strip(), "source": "llm", "usage": usage}
+
+        return self._post(body, parse)
+
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        temperature: float = 0.2,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": self.settings.llm_model,
+            "temperature": temperature,
+            "messages": messages,
+            "tool_choice": "auto",
+        }
+        if tools:
+            body["tools"] = tools
+
+        def parse(payload: dict[str, Any]) -> dict[str, Any]:
+            message = payload["choices"][0]["message"]
+            calls: list[dict[str, Any]] = []
+            for item in message.get("tool_calls") or []:
+                function = item.get("function") or {}
+                raw = function.get("arguments") or "{}"
+                try:
+                    arguments = json.loads(raw) if isinstance(raw, str) else raw
+                except ValueError:
+                    arguments = None
+                calls.append(
+                    {
+                        "id": str(item.get("id") or ""),
+                        "name": str(function.get("name") or ""),
+                        "arguments": arguments,
+                        "raw_arguments": raw if isinstance(raw, str) else json.dumps(raw),
+                    }
+                )
+            return {
+                "text": str(message.get("content") or "").strip(),
+                "tool_calls": calls,
+                "source": "llm",
+                "usage": self._token_usage(payload),
+            }
+
+        return self._post(body, parse)
 
     def _chat_json(self, system: str, user: str) -> dict[str, Any]:
         return self._chat(system, user, json_mode=True)

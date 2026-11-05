@@ -332,6 +332,9 @@ export const ChatMessageItem = ({
     )
   }
 
+  // tool_call 与 tool_result 成对保存，界面只渲染 tool_result 的执行卡片。
+  if (message.kind === 'tool_call') return null
+
   if (message.kind === 'execution' && message.execution) {
     return (
       <article className="chat-row chat-row-agent chat-row-tool">
