@@ -59,7 +59,7 @@ def build_agent_graph(
     tool_workflow: TaskCreateToolWorkflow | None = None,
 ):
     def classify(state: AgentState) -> AgentState:
-        intent = llm.classify_intent(state["text"])
+        intent = llm.classify_intent(state["text"], state.get("history") or [])
         route = str(intent.get("route", "chat"))
         logger.info(
             "agent intent classified route=%s source=%s adapter=%s",
@@ -347,6 +347,25 @@ class AgentRuntime:
         )
         self._append_event(repository, run, "tool_status", execution)
 
+    @staticmethod
+    def _recent_history(conversation: Any, run_id: str) -> list[dict[str, str]]:
+        """取最近 6 条自然语言消息，排除当前 run 的用户输入和工具消息。"""
+        history: list[dict[str, str]] = []
+        for message in conversation.messages:
+            content = message.content_json or {}
+            if message.run_id == run_id:
+                continue
+            if content.get("kind") != "text":
+                continue
+            role = content.get("role")
+            if role not in {"user", "assistant"}:
+                continue
+            text = str(content.get("content") or "").strip()
+            if not text:
+                continue
+            history.append({"role": role, "content": text[:500]})
+        return history[-6:]
+
     def _record_failure(
         self,
         run_id: str,
@@ -390,6 +409,7 @@ class AgentRuntime:
                         return
                     conversations = self._conversation_service(session)
                     conversation = conversations.get_owned(conversation_id, user_id)
+                    history = self._recent_history(conversation, run_id)
                     self.graph.invoke(
                         {
                             "user_id": user_id,
@@ -401,6 +421,7 @@ class AgentRuntime:
                             "pending_action": None,
                             "draft_version": 0,
                             "tool_trace": None,
+                            "history": history,
                         },
                         self._config(conversation_id),
                     )

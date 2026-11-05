@@ -277,3 +277,46 @@ def test_openai_adapter_writes_optional_llm_trace(settings, tmp_path) -> None:
     raw = trace_path.read_text(encoding="utf-8")
     assert "test-key" not in raw
     assert "Authorization" not in raw
+
+
+def test_recent_history_keeps_last_six_text_messages() -> None:
+    from types import SimpleNamespace
+
+    from app.modules.agent.runtime import AgentRuntime
+
+    messages = [
+        SimpleNamespace(
+            run_id=f"old-{index}",
+            content_json={
+                "role": "user" if index % 2 == 0 else "assistant",
+                "kind": "text",
+                "content": f"m{index}",
+            },
+        )
+        for index in range(10)
+    ]
+    messages.append(
+        SimpleNamespace(
+            run_id="current",
+            content_json={"role": "user", "kind": "text", "content": "current"},
+        )
+    )
+    messages.append(
+        SimpleNamespace(
+            run_id="old-tool",
+            content_json={"role": "tool", "kind": "execution", "content": "tool"},
+        )
+    )
+
+    history = AgentRuntime._recent_history(
+        SimpleNamespace(messages=messages), "current"
+    )
+    assert [item["content"] for item in history] == [
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+    ]
+    assert all(item["role"] in {"user", "assistant"} for item in history)

@@ -59,12 +59,22 @@ class TaskCreateToolWorkflow:
         if not libraries:
             return {**state, "response": NO_LIBRARY_TEXT, "route": "task_create"}
 
-        system = self.prompt.render({"libraries": self._library_lines(libraries)})
+        history = self._history_messages(state)
+        context_text = "\n".join(
+            [state["text"], *(item["content"] for item in history)]
+        )
+        candidates, counts = self._select_library_candidates(
+            libraries, context_text, state["user_id"]
+        )
+        system = self.prompt.render(
+            {"libraries": self._library_lines(candidates, counts)}
+        )
         tools = self.registry.to_openai_tools(state.get("role", "user"), self.workflow)
         try:
             response = self.llm.chat_with_tools(
                 [
                     {"role": "system", "content": system},
+                    *history,
                     {"role": "user", "content": state["text"]},
                 ],
                 tools,
@@ -150,14 +160,67 @@ class TaskCreateToolWorkflow:
         }
 
     @staticmethod
-    def _library_lines(libraries: list[Any]) -> str:
-        lines = []
-        for library in libraries:
-            subject = "英语" if library.subject == "english" else "语文"
-            lines.append(
-                f"- id={library.id} | 名称={library.name} | 学科={subject} | "
-                f"词条数={len(library.entries)}"
+    def _history_messages(state: AgentState) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+        for item in state.get("history") or []:
+            role = item.get("role")
+            content = str(item.get("content") or "").strip()
+            if role in {"user", "assistant"} and content:
+                messages.append({"role": role, "content": content})
+        return messages
+
+    @staticmethod
+    def _select_library_candidates(
+        libraries: list[Any],
+        context_text: str,
+        user_id: str,
+        per_subject: int = 3,
+    ) -> tuple[list[Any], dict[str, int]]:
+        """每学科最多 per_subject 个候选：点名优先、个人优先、最近更新优先。"""
+        selected: list[Any] = []
+        counts: dict[str, int] = {}
+        for subject in ("english", "chinese"):
+            pool = [item for item in libraries if item.subject == subject]
+            counts[subject] = len(pool)
+            if not pool:
+                continue
+            ordered = sorted(
+                pool,
+                key=lambda item: (
+                    item.owner_user_id != user_id,
+                    -(item.updated_at.timestamp() if item.updated_at else 0),
+                ),
             )
+            mentioned = [
+                item
+                for item in ordered
+                if item.name and len(item.name) >= 2 and item.name in context_text
+            ]
+            chosen = list(mentioned[:per_subject])
+            for item in ordered:
+                if len(chosen) >= per_subject:
+                    break
+                if item not in chosen:
+                    chosen.append(item)
+            selected.extend(chosen)
+        return selected, counts
+
+    @staticmethod
+    def _library_lines(libraries: list[Any], counts: dict[str, int]) -> str:
+        lines: list[str] = []
+        for subject, label in (("english", "英语"), ("chinese", "语文")):
+            subject_libraries = [item for item in libraries if item.subject == subject]
+            if not subject_libraries:
+                continue
+            lines.append(
+                f"{label}：共 {counts.get(subject, 0)} 个词库，"
+                f"以下 {len(subject_libraries)} 个是候选"
+            )
+            for library in subject_libraries:
+                lines.append(
+                    f"- id={library.id} | 名称={library.name} | 学科={label} | "
+                    f"词条数={len(library.entries)}"
+                )
         return "\n".join(lines)
 
     @staticmethod

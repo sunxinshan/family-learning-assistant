@@ -47,6 +47,7 @@ class AgentState(TypedDict, total=False):
     token_usage: dict[str, int] | None
     links: list[dict[str, str]] | None
     tool_trace: list[dict[str, Any]] | None
+    history: list[dict[str, str]] | None
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:

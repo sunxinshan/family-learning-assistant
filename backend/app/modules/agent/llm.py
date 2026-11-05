@@ -18,7 +18,9 @@ logger = logging.getLogger("app.agent.llm")
 
 
 class LLMAdapter(Protocol):
-    def classify_intent(self, text: str) -> dict[str, Any]: ...
+    def classify_intent(
+        self, text: str, history: list[dict[str, str]] | None = None
+    ) -> dict[str, Any]: ...
 
     def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]: ...
 
@@ -91,7 +93,9 @@ def _mock_pinyin(word: str) -> str:
 
 
 class MockLLMAdapter:
-    def classify_intent(self, text: str) -> dict[str, Any]:
+    def classify_intent(
+        self, text: str, history: list[dict[str, str]] | None = None
+    ) -> dict[str, Any]:
         lowered = text.strip()
         if any(word in lowered for word in ("创建", "新建", "生成", "安排")) and "任务" in lowered:
             route = "task_create"
@@ -110,6 +114,23 @@ class MockLLMAdapter:
             route = "learning"
         else:
             route = "chat"
+        if route == "chat" and history:
+            last_assistant = next(
+                (
+                    str(item.get("content") or "")
+                    for item in reversed(history)
+                    if item.get("role") == "assistant"
+                ),
+                "",
+            )
+            asks_for_task_library = any(
+                marker in last_assistant
+                for marker in ("哪个词库", "用哪个词库", "选择词库", "请提供词库")
+            )
+            if asks_for_task_library and (
+                "任务" in last_assistant or "创建" in last_assistant
+            ):
+                route = "task_create"
         return {
             "route": route,
             "confidence": 0.99,
@@ -354,14 +375,25 @@ class OpenAICompatibleAdapter:
             "total_tokens": int(usage.get("total_tokens", 0)),
         }
 
-    def _chat(self, system: str, user: str, *, json_mode: bool) -> dict[str, Any]:
+    def _chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool,
+        history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        for item in history or []:
+            role = item.get("role")
+            content = str(item.get("content") or "").strip()
+            if role in {"user", "assistant"} and content:
+                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": user})
         body: dict[str, Any] = {
             "model": self.settings.llm_model,
             "temperature": 0 if json_mode else 0.4,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            "messages": messages,
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
@@ -421,20 +453,33 @@ class OpenAICompatibleAdapter:
 
         return self._post(body, parse)
 
-    def _chat_json(self, system: str, user: str) -> dict[str, Any]:
-        return self._chat(system, user, json_mode=True)
+    def _chat_json(
+        self,
+        system: str,
+        user: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        return self._chat(system, user, json_mode=True, history=history)
 
     def generate_guidance(self, system: str, user_input: str) -> dict[str, Any]:
         return self._chat(system, user_input, json_mode=False)
 
-    def classify_intent(self, text: str) -> dict[str, Any]:
+    def classify_intent(
+        self, text: str, history: list[dict[str, str]] | None = None
+    ) -> dict[str, Any]:
         return self._chat_json(
             (
                 "Classify the user's route as one of: task_create, task_update, "
                 "task_delete, vocabulary_create, vocabulary_import, learning, chat, "
-                "unclear. Return JSON with route. Never include credentials."
+                "unclear. The current message may be a short reply to the previous "
+                "assistant question: use the conversation history to resolve it. If "
+                "the assistant just asked for missing information needed to create a "
+                "task, keep task_create; use task_update/task_delete/vocabulary_create/"
+                "vocabulary_import analogously. Return JSON with route. Never include "
+                "credentials."
             ),
             text,
+            history=history,
         )
 
     def analyze_headers(self, headers: list[str], samples: list[list[str]]) -> dict[str, Any]:

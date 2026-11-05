@@ -23,8 +23,12 @@ class FakeToolLLM:
         self.fail_if_called = False
         self.seen_tools: list[dict] = []
         self.seen_messages: list[dict] = []
+        self.classify_calls: list[tuple[str, list[dict]]] = []
 
-    def classify_intent(self, text: str) -> dict:
+    def classify_intent(
+        self, text: str, history: list[dict[str, str]] | None = None
+    ) -> dict:
+        self.classify_calls.append((text, list(history or [])))
         return {"route": "task_create", "source": "fake", "usage": self.usage}
 
     def chat_with_tools(self, messages: list[dict], tools: list[dict], **_kwargs) -> dict:
@@ -242,3 +246,81 @@ def test_tool_calling_disabled_keeps_legacy_flow(settings: Settings) -> None:
 def test_task_create_tool_prompt_only_needs_libraries() -> None:
     prompt = PromptRegistry(Path("app/modules/agent/prompts")).get("task_create_tools")
     assert prompt.variables == ("libraries",)
+
+
+def test_tool_calling_uses_history_for_follow_up(settings: Settings) -> None:
+    fake = FakeToolLLM()
+    app = _app(settings, fake)
+    with TestClient(app) as client:
+        token = register(client, "ToolFollow")
+        library = create_library(client, token)
+
+        fake.text = "请问你想用哪个词库？"
+        first = start_run(client, token, "创建任务")
+        assert "confirmation_required" not in {event["type"] for event in first}
+        assert find_event(first, "message")["data"]["content"] == "请问你想用哪个词库？"
+
+        fake.text = ""
+        fake.tool_calls = [
+            {
+                "id": "call_follow",
+                "name": "task_create_preview",
+                "arguments": {"name": "追问任务", "library_id": library["id"]},
+                "raw_arguments": "{}",
+            }
+        ]
+        second = start_run(client, token, f"用「{library['name']}」")
+
+        history = fake.classify_calls[1][1]
+        assert {"role": "user", "content": "创建任务"} in history
+        assert {"role": "assistant", "content": "请问你想用哪个词库？"} in history
+        messages = fake.seen_messages
+        assert messages[-1] == {"role": "user", "content": f"用「{library['name']}」"}
+        assert {"role": "assistant", "content": "请问你想用哪个词库？"} in messages
+        confirmation = find_event(second, "confirmation_required")["data"]
+        assert confirmation["payload"]["taskDraft"]["selectedEntryIds"] == [
+            entry["id"] for entry in library["entries"]
+        ]
+
+
+def test_library_candidates_cap_per_subject_and_keep_mentioned() -> None:
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from app.modules.agent.tool_workflow import TaskCreateToolWorkflow
+
+    now = datetime.now(UTC)
+
+    def library(name: str, subject: str, owner: str, minutes: int, index: int):
+        return SimpleNamespace(
+            id=f"{subject}-{index}",
+            name=name,
+            subject=subject,
+            owner_user_id=owner,
+            updated_at=now - timedelta(minutes=minutes),
+            entries=[object()],
+        )
+
+    libraries = [
+        library("个人英语A", "english", "user-1", 50, 1),
+        library("个人英语B", "english", "user-1", 40, 2),
+        library("公共英语C", "english", "other", 1, 3),
+        library("公共英语D", "english", "other", 2, 4),
+        library("点名英语E", "english", "other", 100, 5),
+        library("个人语文A", "chinese", "user-1", 10, 6),
+        library("个人语文B", "chinese", "user-1", 20, 7),
+        library("个人语文C", "chinese", "user-1", 30, 8),
+        library("个人语文D", "chinese", "user-1", 40, 9),
+    ]
+    selected, counts = TaskCreateToolWorkflow._select_library_candidates(
+        libraries, "用点名英语E创建任务", "user-1"
+    )
+    english = [item.name for item in selected if item.subject == "english"]
+    chinese = [item.name for item in selected if item.subject == "chinese"]
+    assert counts == {"english": 5, "chinese": 4}
+    assert len(english) == 3
+    assert len(chinese) == 3
+    assert "点名英语E" in english
+    assert "个人英语A" in english
+    assert english[0] == "点名英语E"
+    assert chinese == ["个人语文A", "个人语文B", "个人语文C"]
