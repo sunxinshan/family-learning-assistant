@@ -324,3 +324,25 @@ def test_library_candidates_cap_per_subject_and_keep_mentioned() -> None:
     assert "个人英语A" in english
     assert english[0] == "点名英语E"
     assert chinese == ["个人语文A", "个人语文B", "个人语文C"]
+
+
+def test_new_run_does_not_inherit_previous_task_links(client: TestClient) -> None:
+    token = register(client, "LinkReset")
+    library = create_library(client, token, "Link Reset Library")
+    events = start_run(client, token, f"创建任务，选择「{library['name']}」的所有单词")
+    confirmation = find_event(events, "confirmation_required")["data"]
+    confirmed = client.post(
+        f"/api/v1/agent/actions/{confirmation['id']}/confirm",
+        headers=auth(token),
+        json={
+            "draftVersion": confirmation["draftVersion"],
+            "configHash": confirmation["configHash"],
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    created = find_event(parse_sse(confirmed.text), "message")["data"]
+    assert created["links"][0]["label"] == "打开任务"
+
+    follow_up = start_run(client, token, "你好")
+    message = find_event(follow_up, "message")["data"]
+    assert not message.get("links")

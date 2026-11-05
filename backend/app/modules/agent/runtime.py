@@ -129,13 +129,33 @@ def build_agent_graph(
             }
         )
         if not isinstance(resume_value, dict) or resume_value.get("decision") == "cancel":
-            return {**state, "pending_action": None, "response": "操作已取消，没有写入业务数据。"}
+            return {
+                **state,
+                "pending_action": None,
+                "links": None,
+                "response": "操作已取消，没有写入业务数据。",
+            }
         if resume_value.get("action_id") != action.get("id"):
-            return {**state, "pending_action": None, "response": "确认的操作已失效，请重新发起。"}
+            return {
+                **state,
+                "pending_action": None,
+                "links": None,
+                "response": "确认的操作已失效，请重新发起。",
+            }
         if resume_value.get("draft_version") != state.get("draft_version"):
-            return {**state, "pending_action": None, "response": "配置版本已变化，请重新确认。"}
+            return {
+                **state,
+                "pending_action": None,
+                "links": None,
+                "response": "配置版本已变化，请重新确认。",
+            }
         if resume_value.get("config_hash") != state.get("config_hash"):
-            return {**state, "pending_action": None, "response": "配置已变化，请重新确认。"}
+            return {
+                **state,
+                "pending_action": None,
+                "links": None,
+                "response": "配置已变化，请重新确认。",
+            }
         if action.get("operation") == "delete_task" and action.get("stage") == 1:
             next_action = business.stage_delete_confirmation(action, state["user_id"])
             next_version = int(state.get("draft_version", 1)) + 1
@@ -144,6 +164,7 @@ def build_agent_graph(
                 "pending_action": next_action,
                 "draft_version": next_version,
                 "config_hash": next_action["config_hash"],
+                "links": None,
                 "response": "第一次确认已记录，请再次确认永久删除。",
             }
         result = business.execute(action, state["user_id"], role=state.get("role", "user"))
@@ -421,6 +442,7 @@ class AgentRuntime:
                             "pending_action": None,
                             "draft_version": 0,
                             "tool_trace": None,
+                            "links": None,
                             "history": history,
                         },
                         self._config(conversation_id),
