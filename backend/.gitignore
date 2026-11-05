@@ -10,3 +10,4 @@ data/*.db
 data/*.db-*
 data/uploads/
 data/*.db.*
+data/llm-trace*.jsonl
