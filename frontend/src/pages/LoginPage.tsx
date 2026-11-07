@@ -7,6 +7,7 @@ import {
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Badge, Button, Field, InlineError, TextInput } from '../components/ui'
+import { SiteFooter } from '../components/SiteFooter'
 import { useAppStore } from '../stores/AppStoreContext'
 
 export const LoginPage = () => {
@@ -134,6 +135,7 @@ export const LoginPage = () => {
 
 
         </div>
+        <SiteFooter className="site-footer--login" />
       </section>
 
     </div>

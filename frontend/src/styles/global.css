@@ -6767,3 +6767,78 @@ html.keyboard-open body {
     display: none;
   }
 }
+
+/* 全站页脚：ICP 备案号。工信部要求备案号在首页底部原样展示，并链接到备案管理系统首页。 */
+:root {
+  --site-footer-height: 34px;
+}
+
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--site-footer-height);
+  padding: 0 16px;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.site-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
+/* 内容页高度不足一屏时，把页脚压到视口底部，而不是浮在内容后面 */
+.app-content > .site-footer {
+  margin-top: auto;
+}
+
+/* 主内容区做成撑满视口的纵向容器，短页面时页脚才会落在底部而不是浮在内容后面 */
+.app-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* 聊天页原本牢牢占满 100vh，给页脚让出高度，避免多出一截无意义滚动。
+   原来写死的 min-height: 600px 在矮屏上会把整页顶出滚动条，改成「装得下才生效」。 */
+.chat-page {
+  height: calc(100vh - var(--site-footer-height));
+  min-height: min(600px, calc(100vh - var(--site-footer-height)));
+}
+
+/* 登录页页脚贴在两栏面板底部，不参与表单的垂直居中 */
+.login-form-panel {
+  position: relative;
+  padding-bottom: 64px;
+}
+
+.site-footer--login {
+  position: absolute;
+  right: 0;
+  bottom: 16px;
+  left: 0;
+  padding: 0 22px;
+}
+
+@media (max-width: 768px) {
+  .chat-page {
+    height: calc(100vh - var(--mobile-topbar-height) - var(--site-footer-height));
+    min-height: min(600px, calc(100vh - var(--mobile-topbar-height) - var(--site-footer-height)));
+  }
+
+  .login-form-panel {
+    padding-bottom: 76px;
+  }
+
+  .site-footer--login {
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}

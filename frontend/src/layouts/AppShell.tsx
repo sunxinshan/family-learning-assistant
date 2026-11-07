@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../stores/AppStoreContext'
 import { IconButton } from '../components/ui'
+import { SiteFooter } from '../components/SiteFooter'
 
 const baseNav = [
   { to: '/', label: '学习助手', icon: MessageSquare, end: true },
@@ -177,6 +178,7 @@ export const AppShell = () => {
           <span className="mobile-account-avatar">{currentUser?.nickname.slice(0, 1)}</span>
         </header>
         <Outlet />
+        <SiteFooter />
       </div>
 
     </div>
