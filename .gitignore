@@ -2,3 +2,5 @@
 .env
 .env.*
 !.env.example
+# 前端生产构建位置（只有 VITE_BASE_PATH，不含密钥），需要入库，否则换机器构建会丢 /zijixue 前缀
+!frontend/.env.production

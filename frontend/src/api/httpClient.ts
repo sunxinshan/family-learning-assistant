@@ -1,7 +1,10 @@
 import type { User } from '../types/domain'
 
+// 应用部署在子路径时（如 /zijixue/），接口同样走子路径前缀：
+// BASE_URL 由 Vite 按 base 注入，结尾一定带 /，所以拼起来是 /zijixue/api/v1。
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '/api/v1'
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ??
+  `${import.meta.env.BASE_URL}api/v1`
 const SESSION_KEY = 'fla.http.session.v1'
 
 export interface StoredSession {
