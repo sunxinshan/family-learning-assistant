@@ -2,10 +2,11 @@ import json
 import logging
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pymysql
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
@@ -32,6 +33,54 @@ from app.modules.conversation.repository import ConversationRepository
 from app.modules.conversation.service import ConversationService
 
 logger = logging.getLogger("app.agent")
+
+# MySQL checkpointer 复用一条长连接（PyMySQLSaver 内部就是单条 pymysql.Connection）。
+# MySQL 的 wait_timeout（生产 28800 秒）会把空闲连接踢掉，但客户端对象留在进程里不会自愈，
+# 下一次 checkpoint 读写就抛 InterfaceError(0, '')，最终被兜成「执行失败，请稍后重试」。
+# 因此每次图调用前探活，并在真正的连接级异常上重连重试一次。
+_CHECKPOINT_RETRY_ERRORS: tuple[type[BaseException], ...] = (
+    pymysql.err.InterfaceError,
+    pymysql.err.OperationalError,
+)
+
+
+def _revive_checkpoint_connection(
+    checkpointer: BaseCheckpointSaver, broken: BaseException | None = None
+) -> bool:
+    """对底层连接做一次 ping(reconnect=True)；不支持的 saver（如 SQLite）直接跳过。"""
+    connection = getattr(checkpointer, "conn", None)
+    ping = getattr(connection, "ping", None)
+    if ping is None:
+        return False
+    try:
+        ping(reconnect=True)
+    except Exception:
+        logger.warning("checkpoint 连接重连失败", exc_info=True)
+        return False
+    if broken is not None:
+        logger.warning("checkpoint 连接已断开，已重连后重试：%s", broken)
+    return True
+
+
+def _with_checkpoint_retry[T](
+    checkpointer: BaseCheckpointSaver,
+    operation: Callable[..., T],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> T:
+    """先探活再调用；遇到连接级异常时重连并重试一次。
+
+    重试以 LangGraph 的 checkpoint 为界，从最近一次成功的 checkpoint 继续，
+    与用户手动重试的语义一致。非连接类异常原样抛出。
+    """
+    _revive_checkpoint_connection(checkpointer)
+    try:
+        return operation(*args, **kwargs)
+    except _CHECKPOINT_RETRY_ERRORS as exc:
+        if not _revive_checkpoint_connection(checkpointer, broken=exc):
+            raise
+        return operation(*args, **kwargs)
 
 
 def _now() -> datetime:
@@ -431,7 +480,9 @@ class AgentRuntime:
                     conversations = self._conversation_service(session)
                     conversation = conversations.get_owned(conversation_id, user_id)
                     history = self._recent_history(conversation, run_id)
-                    self.graph.invoke(
+                    _with_checkpoint_retry(
+                        self.checkpointer,
+                        self.graph.invoke,
                         {
                             "user_id": user_id,
                             "role": role,
@@ -447,7 +498,11 @@ class AgentRuntime:
                         },
                         self._config(conversation_id),
                     )
-                    values = self.graph.get_state(self._config(conversation_id)).values
+                    values = _with_checkpoint_retry(
+                        self.checkpointer,
+                        self.graph.get_state,
+                        self._config(conversation_id),
+                    ).values
                     pending_action = values.get("pending_action")
                     response = values.get("response", "")
                     for trace in values.get("tool_trace") or []:
@@ -634,7 +689,9 @@ class AgentRuntime:
                     run = repository.get_run(run_id)
                     if not run:
                         return
-                    self.graph.invoke(
+                    _with_checkpoint_retry(
+                        self.checkpointer,
+                        self.graph.invoke,
                         Command(
                             resume={
                                 "decision": "confirm",
@@ -645,7 +702,11 @@ class AgentRuntime:
                         ),
                         self._config(run.thread_id),
                     )
-                    values = self.graph.get_state(self._config(run.thread_id)).values
+                    values = _with_checkpoint_retry(
+                        self.checkpointer,
+                        self.graph.get_state,
+                        self._config(run.thread_id),
+                    ).values
                     pending_action = values.get("pending_action")
                     response = values.get("response", "")
                     conversations = self._conversation_service(session)
@@ -746,7 +807,9 @@ class AgentRuntime:
             config_hash = _hash_payload(action.get("payload", {}))
             action["config_hash"] = config_hash
             action["configHash"] = config_hash
-            self.graph.update_state(
+            _with_checkpoint_retry(
+                self.checkpointer,
+                self.graph.update_state,
                 self._config(run.thread_id),
                 {
                     "pending_action": action,
