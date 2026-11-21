@@ -77,3 +77,38 @@ class CheckpointDetailOut(CamelModel):
     channel_values: dict[str, Any]
     metadata: dict[str, Any]
     writes: list[CheckpointWriteOut]
+
+
+class ReplaySourceOut(CamelModel):
+    thread_id: str
+    checkpoint_id: str
+    step: int | None = None
+    next: list[str]
+    route: str | None = None
+    response: str | None = None
+    pending_action: dict[str, Any] | None = None
+    prompt_version: str | None = None
+
+
+class ReplayRunOut(CamelModel):
+    thread_id: str
+    route: str | None = None
+    response: str | None = None
+    pending_action: dict[str, Any] | None = None
+    token_usage: dict[str, int] | None = None
+    duration_ms: int
+    prompt_version: str
+    model: str
+    checkpoint_rows_added: int
+
+
+class ReplayDiffOut(CamelModel):
+    route_changed: bool
+    response_changed: bool
+    pending_action_changed: bool
+
+
+class CheckpointReplayOut(CamelModel):
+    source: ReplaySourceOut
+    replay: ReplayRunOut
+    diff: ReplayDiffOut

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
@@ -12,12 +13,21 @@ from app.modules.admin.schemas import (
     CheckpointDetailOut,
     CheckpointListItemOut,
     CheckpointListOut,
+    CheckpointReplayOut,
     CheckpointThreadOut,
     CheckpointWriteOut,
     OperationLogOut,
+    ReplayDiffOut,
+    ReplayRunOut,
+    ReplaySourceOut,
 )
 from app.modules.learning.service import LearningService
 from app.modules.user.service import UserService
+
+if TYPE_CHECKING:
+    # 只在类型检查期引入 agent 运行时：admin 与 agent 已互相依赖
+    # （checkpoint_repository 导入 agent.redaction），运行期硬 import 会加重环。
+    from app.modules.agent.runtime import AgentRuntime
 
 
 class AdminService:
@@ -126,4 +136,29 @@ class AdminService:
             channel_values=data["channel_values"],
             metadata=data["metadata"],
             writes=[CheckpointWriteOut(**write) for write in data["writes"]],
+        )
+
+    def replay_checkpoint(
+        self,
+        admin_id: str,
+        thread_id: str,
+        checkpoint_id: str,
+        agent_runtime: "AgentRuntime",
+    ) -> CheckpointReplayOut:
+        """从历史 checkpoint 重放一次，供管理员调试。
+
+        只做编排：存在性校验、调用运行时、记操作日志、组装响应。
+        锚点解析、terminal / interrupted / ambiguous 等 409 全部由
+        ``AgentRuntime.replay_from_checkpoint`` 抛，本方法只负责透传。
+        """
+        if self.checkpoint_repository.get(thread_id, checkpoint_id) is None:
+            raise AppError("checkpoint_not_found", "Checkpoint 不存在", status_code=404)
+
+        data = agent_runtime.replay_from_checkpoint(thread_id, checkpoint_id)
+        # 唯一写入：管理端操作日志（admin 日志表），不是重放本身的业务写入。
+        self.log(admin_id, "重放 checkpoint", "checkpoint", checkpoint_id, thread_id)
+        return CheckpointReplayOut(
+            source=ReplaySourceOut(**data["source"]),
+            replay=ReplayRunOut(**data["replay"]),
+            diff=ReplayDiffOut(**data["diff"]),
         )
