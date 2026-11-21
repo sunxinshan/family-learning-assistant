@@ -867,7 +867,11 @@ class AgentRuntime:
                 graph.get_state,
                 {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}},
             )
-            if not src.values:
+            # 存在性看 created_at：不存在的 checkpoint 会返回 created_at=None /
+            # metadata=None / tasks=() 的空快照，但 values 同样是 {}。
+            # 真实入口 checkpoint 的 values 也是 {}（输入存在 pending writes 里），
+            # 所以不能用 `not src.values` 判存在，否则会把「存在的入口」误报成 404。
+            if src.created_at is None:
                 raise AppError("checkpoint_not_found", "Checkpoint 不存在", status_code=404)
             if any(task.interrupts for task in src.tasks):
                 raise AppError(
