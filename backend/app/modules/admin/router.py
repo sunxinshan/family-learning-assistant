@@ -10,6 +10,7 @@ from app.modules.admin.schemas import (
     AdminUserOut,
     CheckpointDetailOut,
     CheckpointListOut,
+    CheckpointReplayOut,
     OperationLogOut,
     ResetPasswordOut,
     UserStatusUpdate,
@@ -107,3 +108,22 @@ def get_checkpoint(
     service: AdminService = Depends(get_admin_service),
 ) -> CheckpointDetailOut:
     return service.get_checkpoint(thread_id, checkpoint_id)
+
+
+@router.post(
+    "/checkpoints/{thread_id}/{checkpoint_id}/replay",
+    response_model=CheckpointReplayOut,
+)
+def replay_checkpoint(
+    thread_id: str,
+    checkpoint_id: str,
+    request: Request,
+    context: RuntimeContext = Depends(require_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> CheckpointReplayOut:
+    return service.replay_checkpoint(
+        context.user_id,
+        thread_id,
+        checkpoint_id,
+        request.app.state.agent_runtime,
+    )
