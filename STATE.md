@@ -6,15 +6,16 @@
 
 ## 当前位置
 
-- **活跃 Change**: 无
-- **当前阶段**: 无（入场扫描 + as-built 架构文档 + 域名迁移 + Checkpointer 断连修复均已上线）
+- **活跃 Change**: `checkpoint-replay`（从历史 checkpoint 分叉重跑）
+- **当前阶段**: 3-task 已完成（T01–T07 已拆，波次 5 层；等 W00 确认后进 4-dev）
 - **当前 Task**: —
 - **中断任务**（来自 R1.5 清窗）: 无
 - **会话开始建议**:
   - 先读 `.specs/CONTEXT.md`（rules 层，每次必读）
+  - 本 change 再读 `.specs/checkpoint-replay/{CHANGE,REQUIREMENT,DESIGN,TASK}.md`
   - 2-design / 架构类任务再读 `.specs/ARCHITECTURE.md`（as-built，含 ADR-001~016）
   - 未决项见 `.specs/intel-scan-2026-11-20.md`「待用户确认」：Q1（Dictation 归属）、Q4（跨模块 Repository）
-  - 无活跃 change → 等用户给新 CHANGE，走 `@flow-kit/prompts/0-change.md`
+  - 进 4-dev 前必须先解决 W00（见「阻塞与待决策」）
 
 ## 阻塞与待决策
 
@@ -22,6 +23,7 @@
 |---|---|---|---|---|
 | Q1 Dictation 模块归属 | 决策 | 架构文档列为独立模块，代码中不存在，听写折入 task/practice | 用户 | 2026-11-20 |
 | Q4 跨模块 Repository 访问 | 决策 | 9 处现存违规（架构 §3.3 禁止），已登记技术债 TD-A | 用户 | 2026-11-20 |
+| **W00 WIP 基线提交** | 阻塞 | `checkpoint-replay` 要改的 `admin/{router,service,schemas}.py` 同时含未提交的 checkpoint 巡检 WIP，无法按文件切分提交。建议先把 WIP 单独提交为基线，否则重放功能无法独立回滚 | 用户 | 2026-11-21 |
 | 工作区未提交改动 | 范围 | admin checkpoint 巡检 / Agent 脱敏 / AdminPage，11 文件改动 + 7 未跟踪（域名迁移已单独提交，未混入） | 用户 | 2026-11-20 |
 | 后端 CORS 遗留 | 配置 | `FLA_CORS_ORIGINS` 仍是 `yidongxun.com`；同源访问不受影响，下次重启服务时一并更新 | 用户 | 2026-11-20 |
 | ICP 备案 | 合规 | `zijixue.xyz` 页面底部仍显示 `苏ICP备2026067314号-1`（原属 yidongxun.com），需确认该域名是否已在该备案主体下 | 用户 | 2026-11-20 |
@@ -29,6 +31,8 @@
 
 ## 决策日志（最近 10 条，倒序）
 
+- `[2026-11-21]` 3-task 完成：拆成 T01–T07 / 5 个波次。锚点解析由 admin service 算好再传给 runtime（避免 agent→admin 反向依赖，与 DESIGN §2.2 的落位有一处细化）；token_usage 只记本次增量（update_state 会继承原 usage）；`checkpoint_rows_added` 用 `get_state_history` 长度，runtime 不引入 admin 依赖 — `.specs/checkpoint-replay/TASK.md`
+- `[2026-11-21]` 开 change `checkpoint-replay`：重放选「从某点重跑」而非崩溃续跑；隔离用新 thread + `update_state(as_node=产出节点)`，锚点取 parent 的 `branch:to:<node>`；重放自建 checkpointer 连接，不共用主连接、不抢执行锁 — `~/.specs/checkpoint-replay/DESIGN.md`（ADR-017~021）
 - `[2026-11-20]` Checkpointer 断连修复上线（选择"根治"而非仅重启）：`ping(reconnect=True)` 探活 + 连接级异常重试一次，包住 `invoke`/`get_state`/`update_state`；release `familylearning-3a03d12` — `docs/生产部署记录-20261120.md` §2
 - `[2026-11-20]` 域名迁移落地：`https://zijixue.xyz` 根路径上线（前端 base `/`、独立 LE 证书、旧子路径 301），按 HEAD `cf5f18f` 干净构建，未带工作区未提交改动 — `docs/生产部署记录-20261120.md`
 - `[2026-11-20]` 架构文档分两层：`.specs/ARCHITECTURE.md` 为 as-built 现状，`docs/…V1.0.md` 保留为设计意图；对外域名改为 `zijixue.xyz`，`yidongxun.com` 停服 — 用户确认
@@ -63,6 +67,6 @@ last_health_score:            # 未跑
 ## 健康检查（AI 每次会话开始前自检）
 
 - [x] `.specs/` 目录存在
-- [x] 当前无活跃 change（无工件齐备性问题）
+- [x] 活跃 change `checkpoint-replay` 工件齐备（CHANGE / REQUIREMENT / DESIGN / TASK）
 - [x] 没有未归档但已合并的 change
 - [x] 没有 > 3 轮自动重试仍未解决的失败
