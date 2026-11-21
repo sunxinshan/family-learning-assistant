@@ -1,5 +1,7 @@
 import type {
   AgentEvent,
+  CheckpointDetail,
+  CheckpointList,
   ChatMessage,
   LearningStats,
   LearningTask,
@@ -624,6 +626,25 @@ export const httpApi = {
         body: JSON.stringify({ status }),
       })
       notifyDataChanged()
+    },
+    async listCheckpoints(
+      _adminId: string,
+      params: { threadId?: string; limit?: number; offset?: number } = {},
+    ): Promise<CheckpointList> {
+      const query = new URLSearchParams()
+      if (params.threadId) query.set('thread_id', params.threadId)
+      query.set('limit', String(params.limit ?? 50))
+      query.set('offset', String(params.offset ?? 0))
+      return request(`/admin/checkpoints?${query.toString()}`)
+    },
+    async getCheckpoint(
+      _adminId: string,
+      threadId: string,
+      checkpointId: string,
+    ): Promise<CheckpointDetail> {
+      return request(
+        `/admin/checkpoints/${encodeURIComponent(threadId)}/${encodeURIComponent(checkpointId)}`,
+      )
     },
   },
 

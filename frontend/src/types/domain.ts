@@ -289,3 +289,50 @@ export type AgentEvent =
   | { type: 'confirmation_required'; data: PendingAction }
   | { type: 'error'; data: { code: string; message: string } }
   | { type: 'done'; data: { executionId: string } }
+
+/** 管理后台：Agent 线程摘要（按最近活跃排序）。 */
+export interface CheckpointThread {
+  threadId: string
+  checkpointCount: number
+  latestCheckpointId: string
+  latestStep: number | null
+}
+
+/** 管理后台：单条 checkpoint 的元信息，不含状态内容。 */
+export interface CheckpointListItem {
+  threadId: string
+  checkpointNs: string
+  checkpointId: string
+  parentCheckpointId: string | null
+  step: number | null
+  source: string | null
+  sizeBytes: number
+}
+
+export interface CheckpointList {
+  items: CheckpointListItem[]
+  total: number
+  threads: CheckpointThread[]
+}
+
+export interface CheckpointWrite {
+  taskId: string
+  idx: number
+  channel: string
+  type: string | null
+  value: unknown
+}
+
+/** 管理后台：反序列化后的完整状态（已脱敏）。 */
+export interface CheckpointDetail {
+  threadId: string
+  checkpointNs: string
+  checkpointId: string
+  parentCheckpointId: string | null
+  step: number | null
+  source: string | null
+  sizeBytes: number
+  channelValues: Record<string, unknown>
+  metadata: Record<string, unknown>
+  writes: CheckpointWrite[]
+}

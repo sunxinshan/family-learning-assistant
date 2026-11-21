@@ -1,5 +1,7 @@
 import type {
   AnswerRecord,
+  CheckpointDetail,
+  CheckpointList,
   LearningStats,
   LearningTask,
   OperationLog,
@@ -981,6 +983,14 @@ export const adminApi = {
   getUserStats(adminId: string, userId: string): LearningStats {
     requireOwner(adminId)
     return buildLearningStats(userId)
+  },
+
+  async listCheckpoints(_adminId: string): Promise<CheckpointList> {
+    return { items: [], total: 0, threads: [] }
+  },
+
+  async getCheckpoint(): Promise<CheckpointDetail> {
+    throw new Error('Mock 模式没有 checkpoint 数据，请切换到真实接口')
   },
 }
 

@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
 from app.core.security import RuntimeContext, require_admin
+from app.modules.admin.checkpoint_repository import CheckpointRepository
 from app.modules.admin.repository import OperationLogRepository
 from app.modules.admin.schemas import (
     AdminLearningStatsOut,
     AdminUserOut,
+    CheckpointDetailOut,
+    CheckpointListOut,
     OperationLogOut,
     ResetPasswordOut,
     UserStatusUpdate,
@@ -29,7 +32,13 @@ def get_admin_service(
     user_service = UserService(UserRepository(session), settings)
     practice_service = PracticeService(PracticeRepository(session), session, settings)
     learning = LearningService(practice_service, settings)
-    return AdminService(user_service, learning, OperationLogRepository(session), session)
+    return AdminService(
+        user_service,
+        learning,
+        OperationLogRepository(session),
+        session,
+        CheckpointRepository(settings),
+    )
 
 
 @router.get("/users", response_model=list[AdminUserOut])
@@ -77,3 +86,24 @@ def list_logs(
     service: AdminService = Depends(get_admin_service),
 ) -> list[OperationLogOut]:
     return service.logs()
+
+
+@router.get("/checkpoints", response_model=CheckpointListOut)
+def list_checkpoints(
+    thread_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: RuntimeContext = Depends(require_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> CheckpointListOut:
+    return service.list_checkpoints(thread_id, limit, offset)
+
+
+@router.get("/checkpoints/{thread_id}/{checkpoint_id}", response_model=CheckpointDetailOut)
+def get_checkpoint(
+    thread_id: str,
+    checkpoint_id: str,
+    _: RuntimeContext = Depends(require_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> CheckpointDetailOut:
+    return service.get_checkpoint(thread_id, checkpoint_id)

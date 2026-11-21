@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from app.api.schemas import CamelModel
 from app.modules.learning.schemas import LearningStatsOut
@@ -32,3 +33,47 @@ class ResetPasswordOut(CamelModel):
 
 class AdminLearningStatsOut(LearningStatsOut):
     pass
+
+
+class CheckpointThreadOut(CamelModel):
+    thread_id: str
+    checkpoint_count: int
+    latest_checkpoint_id: str
+    latest_step: int | None = None
+
+
+class CheckpointListItemOut(CamelModel):
+    thread_id: str
+    checkpoint_ns: str
+    checkpoint_id: str
+    parent_checkpoint_id: str | None = None
+    step: int | None = None
+    source: str | None = None
+    size_bytes: int
+
+
+class CheckpointListOut(CamelModel):
+    items: list[CheckpointListItemOut]
+    total: int
+    threads: list[CheckpointThreadOut]
+
+
+class CheckpointWriteOut(CamelModel):
+    task_id: str
+    idx: int
+    channel: str
+    type: str | None = None
+    value: Any = None
+
+
+class CheckpointDetailOut(CamelModel):
+    thread_id: str
+    checkpoint_ns: str
+    checkpoint_id: str
+    parent_checkpoint_id: str | None = None
+    step: int | None = None
+    source: str | None = None
+    size_bytes: int
+    channel_values: dict[str, Any]
+    metadata: dict[str, Any]
+    writes: list[CheckpointWriteOut]

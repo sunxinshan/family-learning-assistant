@@ -3,6 +3,7 @@ import {
   BarChart3,
   BookOpenText,
   CheckCircle2,
+  Database,
   KeyRound,
   ListChecks,
   Plus,
@@ -21,12 +22,13 @@ import {
   Modal,
   PageHeader,
 } from '../components/ui'
+import { CheckpointPanel } from '../features/admin/CheckpointPanel'
 import { useAppStore } from '../stores/AppStoreContext'
 import type { LearningStats, User, Vocabulary } from '../types/domain'
 import { formatDateTime } from '../utils/format'
 import { vocabularyEntryCount } from '../utils/vocabulary'
 
-type Tab = 'users' | 'vocabularies' | 'logs'
+type Tab = 'users' | 'vocabularies' | 'logs' | 'checkpoints'
 
 type AdminUser = User & { practiceCount: number; accuracy: number }
 
@@ -160,6 +162,14 @@ export const AdminPage = () => {
         <button type="button" className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>
           <ScrollText size={15} />
           操作日志
+        </button>
+        <button
+          type="button"
+          className={tab === 'checkpoints' ? 'active' : ''}
+          onClick={() => setTab('checkpoints')}
+        >
+          <Database size={15} />
+          Checkpoint
         </button>
       </div>
 
@@ -325,6 +335,8 @@ export const AdminPage = () => {
           </div>
         </section>
       ) : null}
+
+      {tab === 'checkpoints' ? <CheckpointPanel /> : null}
 
       <Modal
         open={Boolean(statsUser)}

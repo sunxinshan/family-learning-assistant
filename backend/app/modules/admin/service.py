@@ -4,9 +4,18 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.core.models import new_id
+from app.modules.admin.checkpoint_repository import CheckpointRepository
 from app.modules.admin.models import OperationLog
 from app.modules.admin.repository import OperationLogRepository
-from app.modules.admin.schemas import AdminUserOut, OperationLogOut
+from app.modules.admin.schemas import (
+    AdminUserOut,
+    CheckpointDetailOut,
+    CheckpointListItemOut,
+    CheckpointListOut,
+    CheckpointThreadOut,
+    CheckpointWriteOut,
+    OperationLogOut,
+)
 from app.modules.learning.service import LearningService
 from app.modules.user.service import UserService
 
@@ -18,11 +27,13 @@ class AdminService:
         learning_service: LearningService,
         log_repository: OperationLogRepository,
         session: Session,
+        checkpoint_repository: CheckpointRepository,
     ) -> None:
         self.user_service = user_service
         self.learning_service = learning_service
         self.log_repository = log_repository
         self.session = session
+        self.checkpoint_repository = checkpoint_repository
 
     def log(
         self,
@@ -91,3 +102,28 @@ class AdminService:
 
     def logs(self) -> list[OperationLogOut]:
         return [OperationLogOut.model_validate(item) for item in self.log_repository.list()]
+
+    def list_checkpoints(self, thread_id: str | None, limit: int, offset: int) -> CheckpointListOut:
+        data = self.checkpoint_repository.list(thread_id, limit, offset)
+        return CheckpointListOut(
+            items=[CheckpointListItemOut(**item) for item in data["items"]],
+            total=data["total"],
+            threads=[CheckpointThreadOut(**thread) for thread in data["threads"]],
+        )
+
+    def get_checkpoint(self, thread_id: str, checkpoint_id: str) -> CheckpointDetailOut:
+        data = self.checkpoint_repository.get(thread_id, checkpoint_id)
+        if data is None:
+            raise AppError("checkpoint_not_found", "Checkpoint 不存在", status_code=404)
+        return CheckpointDetailOut(
+            thread_id=data["thread_id"],
+            checkpoint_ns=data["checkpoint_ns"],
+            checkpoint_id=data["checkpoint_id"],
+            parent_checkpoint_id=data["parent_checkpoint_id"],
+            step=data["step"],
+            source=data["source"],
+            size_bytes=data["size_bytes"],
+            channel_values=data["channel_values"],
+            metadata=data["metadata"],
+            writes=[CheckpointWriteOut(**write) for write in data["writes"]],
+        )
