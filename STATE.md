@@ -7,8 +7,8 @@
 ## 当前位置
 
 - **活跃 Change**: `checkpoint-replay`（从历史 checkpoint 分叉重跑）
-- **当前阶段**: 3-task 已完成（T01–T07 已拆，5 波次；W00 基线已提交，**可从 Wave 1 的 T01/T02 进 4-dev**）
-- **当前 Task**: —
+- **当前阶段**: 4-dev 进行中 —— T01–T05 + T-FIX-01 已完成并提交，剩 T06（API 测试）
+- **当前 Task**: T06
 - **中断任务**（来自 R1.5 清窗）: 无
 - **会话开始建议**:
   - 先读 `.specs/CONTEXT.md`（rules 层，每次必读）
@@ -31,6 +31,9 @@
 
 ## 决策日志（最近 10 条，倒序）
 
+- `[2026-11-21]` T-FIX-01：`not src.values` 会把「存在的入口 checkpoint」误报成 404（入口的 values 也是 `{}`，输入在 pending writes 里）。改用 `src.created_at is None` 判存在；实测入口→409 terminal、不存在→404。由 T03 写测试时发现 — `T03-SUMMARY.md`
+- `[2026-11-21]` **DESIGN §2.3 被实测推翻**：`writes.branch:to` 指向的是「下一跳」而非「产出节点」，差一层。照原公式当 `as_node` 会一个节点都不跑却返回 200。已改为运行时读父快照的 `next` 解析锚点，`replay_from_checkpoint(thread_id, checkpoint_id)` 不再接收 anchor；`producing_node` 改名 `routing_target` 并标注不可用于锚点。DESIGN.md 本身未改，待批准回写 — `T02-SUMMARY.md`「决策与偏离」1
+- `[2026-11-21]` Wave 1 完成：T01（routing_target / count_thread + 6 断言）、T02（重放核心 + 端到端冒烟），全量 122 passed；T01/T02 的 SUMMARY 与 `.specs/LESSONS.md`（3 条真实踩坑）已入库
 - `[2026-11-21]` W00 完成：checkpoint 巡检 WIP 已作为基线提交（`0383acd`，后端 + 前端 + e2e 共 13 文件），提交前后端 116 passed、前端 `tsc --noEmit` 通过。另提交 `c0addd8`（LLM trace 工具 + `/logs/` 忽略）、`d615452`（本 change 工件）、`b26135d`（服务器交接文档） — 工作区仅剩 flow-kit 与两个不入库项
 - `[2026-11-21]` 3-task 完成：拆成 T01–T07 / 5 个波次。锚点解析由 admin service 算好再传给 runtime（避免 agent→admin 反向依赖，与 DESIGN §2.2 的落位有一处细化）；token_usage 只记本次增量（update_state 会继承原 usage）；`checkpoint_rows_added` 用 `get_state_history` 长度，runtime 不引入 admin 依赖 — `.specs/checkpoint-replay/TASK.md`
 - `[2026-11-21]` 开 change `checkpoint-replay`：重放选「从某点重跑」而非崩溃续跑；隔离用新 thread + `update_state(as_node=产出节点)`，锚点取 parent 的 `branch:to:<node>`；重放自建 checkpointer 连接，不共用主连接、不抢执行锁 — `~/.specs/checkpoint-replay/DESIGN.md`（ADR-017~021）

@@ -268,7 +268,7 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
   <depends_on>T04</depends_on>
 </task>
 
-<task id="T06" parallel="false" status="pending">
+<task id="T06" parallel="false" status="done" completed_at="2026-11-21 17:52">
   <name>API 层端到端测试：契约 / 权限 / 降级</name>
   <read_files>
     backend/tests/test_admin_checkpoints.py
