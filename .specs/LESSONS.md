@@ -84,6 +84,37 @@ cd backend && .venv/bin/pytest -q --basetemp=/tmp/fla-pt-t03 tests/xxx.py
 
 ---
 
+### L-004 · [lib, arch] checkpoint 的 `branch:to` 指向「下一跳」，不是「产出节点」
+
+- **首发**: checkpoint-replay · T02 · 2026-11-21
+- **上次复核**: 2026-11-21
+- **适用栈**: langgraph 1.2.19（SqliteSaver / PyMySQLSaver 一致）
+- **状态**: active
+- **关键词**: checkpoint replay as_node update_state branch:to writes anchor 锚点 重放 fork
+
+**问题场景**
+要做「从历史 checkpoint 分叉重跑」，需要 `update_state(values, as_node=<产出该 checkpoint 的节点>)`，否则 `next` 会被重算成入口节点，已完成节点被重跑。
+
+**当时尝试的方案**
+按直觉查 `writes` 表：目标 checkpoint 的 parent 上那条 `channel = 'branch:to:<node>'` 的目标，认为它就是产出节点。
+
+**为什么不行**
+差一层。实测 a→b 两节点图：
+```
+mid          next=('b',)  values={'text':'a'}   ← 由 a 产出
+mid.parent   branch:to 目标 = 'b'               ← 取到的是「下一跳」
+mid.parent   next = ('a',)                      ← 真正的产出节点
+```
+用 `'b'` 当锚点：`update_state` 后 `next == ()`，`invoke` **一个节点都不执行**，values 原样返回，HTTP 仍 200、diff 全 false —— 看起来像"重放确认结果稳定"。
+
+**当前推荐做法**
+锚点 = **父快照的 `next`**（`graph.get_state(src.parent_config).next`），长度不为 1 就拒绝（并行分支安全失败）。不要从 `writes` 的字符串里推断，也不要从 `snap.metadata` 找 `writes`（langgraph 1.2 的 metadata 只有 `source`/`step`/`parents`）。
+
+**何时可重新评估**
+langgraph 变更 checkpoint 结构或 `update_state` 的 `as_node` 语义之后；届时先跑一个两节点图打印 `next` / `writes` 再动手。
+
+---
+
 ## 提名条件
 
 调试/试错 > 30 分钟；错因跨任务复用；6 个月内可能再撞；否决理由不写就丢。

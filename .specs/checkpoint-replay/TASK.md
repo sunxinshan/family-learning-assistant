@@ -150,7 +150,7 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
   <depends_on></depends_on>
 </task>
 
-<task id="T03" parallel="true" status="pending">
+<task id="T03" parallel="true" status="done" completed_at="2026-11-21 17:42">
   <name>重放核心行为单测：隔离性 / 零写入 / 只跑剩余节点</name>
   <read_files>
     backend/app/modules/agent/runtime.py
@@ -193,7 +193,7 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
   <depends_on>T02</depends_on>
 </task>
 
-<task id="T04" parallel="true" status="pending">
+<task id="T04" parallel="true" status="done" completed_at="2026-11-21 17:34">
   <name>AdminService 编排 + 响应 schema</name>
   <read_files>
     backend/app/modules/admin/service.py
@@ -240,7 +240,7 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
   <depends_on>T01,T02</depends_on>
 </task>
 
-<task id="T05" parallel="false" status="pending">
+<task id="T05" parallel="false" status="done" completed_at="2026-11-21 17:36">
   <name>新增重放端点</name>
   <read_files>
     backend/app/modules/admin/router.py
@@ -396,6 +396,41 @@ grandparent  branch:to 目标 = 'a'
 3. 记操作日志
 
 `routing_target` / `count_thread`（T01）保留，作为管理页的诊断能力，**不进入重放链路**。这也顺带消除了原先「agent → admin 反向依赖」的顾虑，比原方案更干净。
+
+---
+
+## Fix 任务（来自 DEV 过程中的实测缺陷）
+
+```xml
+<task id="T-FIX-01" parallel="false" status="done" completed_at="2026-11-21 17:44">
+  <name>修正「存在性」判断：入口 checkpoint 被误报 404</name>
+  <read_files>
+    backend/app/modules/agent/runtime.py
+    backend/tests/test_checkpoint_replay_unit.py
+  </read_files>
+  <write_files>
+    backend/app/modules/agent/runtime.py
+  </write_files>
+  <action>
+    T03 写测试时发现：真实 run 的 input checkpoint（step=-1）`values == {}`，
+    而原实现用 `if not src.values` 判「checkpoint 不存在」，导致对**存在的入口**
+    返回 404 checkpoint_not_found —— 管理员会以为数据丢了。
+
+    实测 get_state 的返回差异：
+    - 不存在：created_at=None、metadata=None、tasks=()、values={}、next=()
+    - 真实入口：created_at 有值、metadata={'source':'input','step':-1}、next=('__start__',)、values={}
+
+    改用 `src.created_at is None` 判存在。修正后：
+    - 入口 → 走 `parent_config is None` 分支 → 409 checkpoint_terminal
+    - 不存在的 id / thread → 404 checkpoint_not_found
+  </action>
+  <verify>
+    cd backend &amp;&amp; .venv/bin/pytest -q --basetemp=/tmp/fla-t03-after tests/test_checkpoint_replay_unit.py
+  </verify>
+  <done>真实入口返回 409 terminal、不存在返回 404；8 条单测与全量 130 用例全绿</done>
+  <depends_on>T02,T03</depends_on>
+</task>
+```
 
 ---
 

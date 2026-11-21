@@ -131,6 +131,19 @@ grandparent  branch:to 目标 = 'a'                  ← 上溯一层才等于�
 
 langgraph 1.2.19 + SqliteSaver 下 `snap.metadata` 只有 `source` / `step` / `parents`，**没有 `writes` 键**，因此锚点无法从 `get_state_history` 的 metadata 取 —— 这也是改用父快照 `next` 的旁证。
 
+### 5. 后续修正（T-FIX-01，由 T03 发现）
+
+本任务最初用 `if not src.values` 判断「checkpoint 不存在」。T03 写测试时发现真实 run 的入口 checkpoint（`step=-1`）`values` 也是 `{}`，于是被误报成 404「不存在」。
+
+实测差异：
+
+| | `created_at` | `metadata` | `tasks` | `values` | `next` |
+|---|---|---|---|---|---|
+| 不存在的 id | `None` | `None` | `()` | `{}` | `()` |
+| 真实入口 | 有值 | `{'source':'input','step':-1}` | 1 项 | `{}` | `('__start__',)` |
+
+已改为 `if src.created_at is None`。修正后入口 → 409 `checkpoint_terminal`，不存在的 id / thread → 404。详见 `T03-SUMMARY.md` 与 `TASK.md` 的 `T-FIX-01`。
+
 ## 是否触发新工作
 
 无。
