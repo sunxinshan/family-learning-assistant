@@ -46,7 +46,7 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
 ## 任务清单
 
 ```xml
-<task id="T01" parallel="true" status="pending">
+<task id="T01" parallel="true" status="done" completed_at="2026-11-21 17:26">
   <name>CheckpointRepository 增加锚点解析与 thread 计数</name>
   <read_files>
     backend/app/modules/admin/checkpoint_repository.py
@@ -62,7 +62,7 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
   <action>
     在既有 CheckpointRepository 上加两个方法，沿用它的 `_url()` + `_engine_for()` 连接方式，不新建连接池、不新建类：
 
-    1) `producing_node(thread_id, checkpoint_id) -> str | None`
+    1) `routing_target(thread_id, checkpoint_id) -> str | None`
        查 `writes` 表：`select channel from writes where thread_id=:t and checkpoint_id=:c and channel like 'branch:to:%'`。
        命中恰好 1 条 → 返回 `channel.split('branch:to:', 1)[1]`；
        命中 0 条或多条 → 返回 None，并在多条时 logger.warning 记录候选列表（ADR-019：歧义即拒绝，不猜）。
@@ -72,20 +72,23 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
        `select count(*) from checkpoints where thread_id=:t`，用于回填响应里的 `checkpoint_rows_added`。
        异常时返回 0，不抛。
 
-    注意：`producing_node` 的入参是**目标 checkpoint**，但 SQL 查的是它 **parent** 的 writes —— 由调用方传 parent_id（T04 负责传），本方法只按传入 id 查，保持单一职责，不在方法内做二次查询。
+    注意：`routing_target` 的入参是**目标 checkpoint**，但 SQL 查的是它 **parent** 的 writes —— 由调用方传 parent_id（T04 负责传），本方法只按传入 id 查，保持单一职责，不在方法内做二次查询。
 
-    新增测试文件用真 SqliteSaver 跑一个 a→b 小图产生 writes，断言：b 的 parent 的 producing_node 为 "a"；并行/无 branch 的情况返回 None；count_thread 计数正确。
+    新增测试文件用真 SqliteSaver 跑一个 a→b 小图产生 writes，断言：
+    - `routing_target(thread, mid.parent_id) == "b"`（证明它是「下一跳」）
+    - `routing_target(thread, grandparent_id) == "a"`（证明「产出节点」需上溯一层）
+    - 并行/无 branch 的情况返回 None；`count_thread` 计数与实际行数一致
   </action>
   <verify>
     cd backend &amp;&amp; .venv/bin/pytest -q --basetemp=/tmp/fla-pt-t01 tests/test_checkpoint_anchor_repository.py
   </verify>
   <done>
-    producing_node 在"唯一命中"时返回节点名、在 0 条/多条时返回 None；count_thread 返回真实行数；4 条以上断言全绿（AC-4 的锚点部分）
+    routing_target 在"唯一命中"时返回节点名、在 0 条/多条时返回 None；count_thread 返回真实行数；4 条以上断言全绿（AC-4 的锚点部分）
   </done>
   <depends_on></depends_on>
 </task>
 
-<task id="T02" parallel="true" status="pending">
+<task id="T02" parallel="true" status="done" completed_at="2026-11-21 17:22">
   <name>AgentRuntime.replay_from_checkpoint 核心实现</name>
   <read_files>
     backend/app/modules/agent/runtime.py
@@ -101,8 +104,11 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
     backend/app/modules/agent/runtime.py
   </write_files>
   <action>
+    ⚠️ 本任务的签名与锚点取法已被实测修正（2026-11-21），**以文末「修正 1」为准**：
+    实际签名为 `replay_from_checkpoint(thread_id, checkpoint_id)`，锚点在方法内部解析。
+
     在 AgentRuntime 上新增一个方法，签名：
-    `replay_from_checkpoint(self, thread_id: str, checkpoint_id: str, anchor: str) -> dict[str, Any]`
+    `replay_from_checkpoint(self, thread_id: str, checkpoint_id: str) -> dict[str, Any]`
 
     实现要点（严格按 DESIGN §2.2 / §2.5）：
     - **独立连接**：`with CheckpointerManager(self.settings) as saver:` 自开一条，用
@@ -202,6 +208,8 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
     backend/app/modules/admin/schemas.py
   </write_files>
   <action>
+    ⚠️ 见文末「修正 2」：本任务**不再需要** `routing_target` 参与重放，锚点由 runtime 自解。
+
     schemas.py 增加四个模型（沿用 `CamelModel`，前端拿到的就是 camelCase）：
     `ReplaySourceOut` / `ReplayRunOut` / `ReplayDiffOut` / `CheckpointReplayOut`，
     字段与 DESIGN §3 响应体逐项对齐（source/replay/diff 三段，含 prompt_version 与 model）。
@@ -210,13 +218,13 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
     负责编排与**拒绝前置**（顺序不可换）：
     1) `self.checkpoint_repository.get(thread_id, checkpoint_id)` 为 None → `checkpoint_not_found` 404
        （复用既有的 404 文案，别新造）。
-    2) 取 parent_id = 上面结果里的 `parent_checkpoint_id`；为 None（首个 checkpoint）→ `checkpoint_terminal` 409
-       （入口点没有产出节点，无锚可依）。
-    3) `anchor = self.checkpoint_repository.producing_node(thread_id, parent_id)`；
-       None → `replay_anchor_ambiguous` 409，message 里写明"该 checkpoint 无唯一产出节点，可能来自并行分支"。
-    4) 委托 `agent_runtime.replay_from_checkpoint(thread_id, checkpoint_id, anchor)`。
-    5) `self.log(admin_id, "重放 checkpoint", "checkpoint", checkpoint_id, thread_id)` —— 复用既有操作日志，
+    2) 委托 `agent_runtime.replay_from_checkpoint(thread_id, checkpoint_id)`。
+       锚点由 runtime 从父快照解析；`checkpoint_terminal` / `checkpoint_interrupted` /
+       `replay_anchor_ambiguous` 三种 409 均由 runtime 抛出，service 只透传，不重复判断。
+    3) `self.log(admin_id, "重放 checkpoint", "checkpoint", checkpoint_id, thread_id)` —— 复用既有操作日志，
        管理员动作必须留痕；这是**唯一**允许的写入，且写的是 admin 自己的日志表（不违反 AC-3，AC-3 管的是业务表与 agent 表）。
+
+    （原第 2、3 步「取 parent_id → 调 routing_target 算 anchor」已删除，见文末「修正 2」。）
 
     不做：不在 service 里碰 checkpointer、不建图、不算 diff（都是 runtime 的职责）。
 
@@ -355,14 +363,39 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
 
 ---
 
-## 与设计的一处实现细化（不构成设计变更）
+## 与设计的偏离（执行中实测修正 · 2026-11-21）
 
-DESIGN §2.2 把 `producing_node` 画在 runtime 的流程里，§9.1 也把它列为 `CheckpointRepository` 的方法。
-两者合起来会让 `agent` 反向 import `admin`（而 `admin` 已经 import `agent.redaction`，形成双向依赖）。
-因此**锚点由 admin service 算好、以参数传给 runtime**（T04 → T02 的 `anchor` 形参）：
-- 层次更干净：谁碰 checkpoint 库，谁负责解析锚点；
-- runtime 保持"只跑图、不认库"；
-- 代价：`anchor` 成了必填参数，调用方必须算对 —— 由 T04 的四步前置与 T06 的 409 断言兜住。
+> 以下两条由 T02 执行时的实测推翻原设计，**DESIGN.md 未擅自修改**（R3.2），记录在此供后续批准与回写。
+
+### 修正 1：锚点由 runtime 内部解析，DESIGN §2.3 的取法 off-by-one
+
+DESIGN §2.3 说「目标 checkpoint 的产出节点 = 它 parent 的 `writes.branch:to` 目标」。实测（临时 SQLite，a→b 图，langgraph 1.2.19）：
+
+```
+mid          next=('b',)  values={'text':'a'}      ← 由 a 产出
+mid.parent   branch:to 目标 = 'b'                  ← 设计的取法，拿到的是「下一跳」
+mid.parent   next = ('a',)                         ← 真正的产出节点
+grandparent  branch:to 目标 = 'a'
+```
+
+| as_node | update_state 后 next | 实际执行 | 结果 |
+|---|---|---|---|
+| `'a'`（父的 next） | `('b',)` | `['b']` | `{'text':'b'}` ✅ |
+| `'b'`（设计原公式） | `()` | `[]` | `{'text':'a'}`，**什么都没跑**却返回 200 |
+| 不传锚点 | `('a',)` | `['a','b']` | 已完成节点被重跑 |
+
+因此 **T02 的签名改为 `replay_from_checkpoint(thread_id, checkpoint_id)`**，锚点在方法内部由 `src.parent_config` 的快照取 `parent.next`：
+- `len(parent.next) != 1` → `replay_anchor_ambiguous` 409
+- `parent_config` 为空（入口 checkpoint）→ `checkpoint_terminal` 409
+
+### 修正 2：T04 不再需要 `routing_target` 参与重放
+
+原计划 T04 用 `CheckpointRepository.routing_target()` 算锚点再传给 runtime。修正后 runtime 自解，T04 只做：
+1. `repository.get()` 校验存在（404）
+2. 委托 `agent_runtime.replay_from_checkpoint(thread_id, checkpoint_id)`
+3. 记操作日志
+
+`routing_target` / `count_thread`（T01）保留，作为管理页的诊断能力，**不进入重放链路**。这也顺带消除了原先「agent → admin 反向依赖」的顾虑，比原方案更干净。
 
 ---
 
