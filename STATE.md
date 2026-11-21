@@ -7,8 +7,8 @@
 ## 当前位置
 
 - **活跃 Change**: `checkpoint-replay`（从历史 checkpoint 分叉重跑）
-- **当前阶段**: 4-dev 进行中 —— T01–T05 + T-FIX-01 已完成并提交，剩 T06（API 测试）
-- **当前 Task**: T06
+- **当前阶段**: 4-dev 完成 —— T01–T06 + T-FIX-01 全部 done，全量 136 passed。下一步 `5-test`（或先部署跑 T07）
+- **当前 Task**: —（等用户决定 5-test / 部署 / 先评审）
 - **中断任务**（来自 R1.5 清窗）: 无
 - **会话开始建议**:
   - 先读 `.specs/CONTEXT.md`（rules 层，每次必读）
@@ -31,6 +31,7 @@
 
 ## 决策日志（最近 10 条，倒序）
 
+- `[2026-11-21]` 4-dev 完成（T01–T06 + T-FIX-01，8 个提交）：后端新增 `POST /api/v1/admin/checkpoints/{thread}/{checkpoint}/replay`，全量 136 passed。两条已知取舍：`tokenUsage` 内层保持 snake_case 以对齐既有 `/agent/runs` 契约；`replay_anchor_ambiguous` 在线性图下无法构造，未覆盖 — `T06-SUMMARY.md`
 - `[2026-11-21]` T-FIX-01：`not src.values` 会把「存在的入口 checkpoint」误报成 404（入口的 values 也是 `{}`，输入在 pending writes 里）。改用 `src.created_at is None` 判存在；实测入口→409 terminal、不存在→404。由 T03 写测试时发现 — `T03-SUMMARY.md`
 - `[2026-11-21]` **DESIGN §2.3 被实测推翻**：`writes.branch:to` 指向的是「下一跳」而非「产出节点」，差一层。照原公式当 `as_node` 会一个节点都不跑却返回 200。已改为运行时读父快照的 `next` 解析锚点，`replay_from_checkpoint(thread_id, checkpoint_id)` 不再接收 anchor；`producing_node` 改名 `routing_target` 并标注不可用于锚点。DESIGN.md 本身未改，待批准回写 — `T02-SUMMARY.md`「决策与偏离」1
 - `[2026-11-21]` Wave 1 完成：T01（routing_target / count_thread + 6 断言）、T02（重放核心 + 端到端冒烟），全量 122 passed；T01/T02 的 SUMMARY 与 `.specs/LESSONS.md`（3 条真实踩坑）已入库
