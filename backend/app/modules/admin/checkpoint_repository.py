@@ -235,3 +235,74 @@ class CheckpointRepository:
                 for write in write_rows
             ],
         }
+
+    # --- 节点反查 / 统计 ---------------------------------------------------
+    def routing_target(self, thread_id: str, checkpoint_id: str) -> str | None:
+        """反查某个 checkpoint 上 ``branch:to:<node>`` 写入指向的**下一跳**节点。
+
+        ⚠️ 返回的是「下一跳」，**不是**「产出该 checkpoint 的节点」。两者差一层：
+
+        - ``routing_target(X)`` = X 之后要执行的节点（= X 的子 checkpoint 的 next）
+        - 「产出 X 的节点」= X 的父快照的 next（自环时可能等于本值，但不要依赖）
+
+        重放要的是后者，由 ``AgentRuntime.replay_from_checkpoint`` 自己从父快照取，
+        **不要**用本方法当 ``as_node`` 锚点 —— 实测传错会让重放一个节点都不跑，
+        还返回 200（见 .specs/checkpoint-replay/T02-SUMMARY.md「决策与偏离」1）。
+
+        入参是**某个 checkpoint 的 id**，本方法只按这个 id 直接查 writes 表，不做二次查询。
+        只命中一条时返回节点名；命中 0 条（终点/无分支）返回 None；命中多条
+        （并行分支、自环）无法判定唯一节点，返回 None 并记 warning。
+        """
+        url = self._url()
+        if url is None:
+            return None
+        try:
+            with _engine_for(url).connect() as conn:
+                channels = [
+                    str(row[0])
+                    for row in conn.execute(
+                        text(
+                            "select channel from writes "
+                            "where thread_id = :thread_id and checkpoint_id = :checkpoint_id "
+                            "and channel like 'branch:to:%'"
+                        ),
+                        {"thread_id": thread_id, "checkpoint_id": checkpoint_id},
+                    )
+                ]
+        except SQLAlchemyError:
+            logger.warning(
+                "checkpoint producing node query failed thread_id=%s checkpoint_id=%s",
+                thread_id,
+                checkpoint_id,
+                exc_info=True,
+            )
+            return None
+        if len(channels) != 1:
+            if len(channels) > 1:
+                logger.warning(
+                    "checkpoint has multiple branch writes thread_id=%s checkpoint_id=%s "
+                    "channels=%s",
+                    thread_id,
+                    checkpoint_id,
+                    channels,
+                )
+            return None
+        return channels[0].split("branch:to:", 1)[1]
+
+    def count_thread(self, thread_id: str) -> int:
+        """该 thread 在 checkpoints 表的行数；库不可用时返回 0，不抛异常。"""
+        url = self._url()
+        if url is None:
+            return 0
+        try:
+            with _engine_for(url).connect() as conn:
+                total = conn.execute(
+                    text("select count(*) from checkpoints where thread_id = :thread_id"),
+                    {"thread_id": thread_id},
+                ).scalar_one()
+        except SQLAlchemyError:
+            logger.warning(
+                "checkpoint thread count query failed thread_id=%s", thread_id, exc_info=True
+            )
+            return 0
+        return int(total)
