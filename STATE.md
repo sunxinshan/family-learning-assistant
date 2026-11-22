@@ -7,20 +7,21 @@
 ## 当前位置
 
 - **活跃 Change**: `checkpoint-replay`（从历史 checkpoint 分叉重跑）
-- **当前阶段**: 4-dev 完成 —— T01–T06 + T-FIX-01 全部 done，全量 136 passed。下一步 `5-test`（或先部署跑 T07）
-- **当前 Task**: —（等用户决定 5-test / 部署 / 先评审）
+- **当前阶段**: **5-test 完成** —— 五轮金字塔跑完，140 用例全绿，AC 7/7 覆盖。产物 `.specs/checkpoint-replay/TEST.md`。下一步 `6-review`
+- **当前 Task**: —（T07 属 7-integration，待部署后执行）
 - **中断任务**（来自 R1.5 清窗）: 无
 - **会话开始建议**:
   - 先读 `.specs/CONTEXT.md`（rules 层，每次必读）
-  - 本 change 再读 `.specs/checkpoint-replay/{CHANGE,REQUIREMENT,DESIGN,TASK}.md`
+  - 本 change 再读 `.specs/checkpoint-replay/{CHANGE,REQUIREMENT,DESIGN,TASK,TEST}.md`
   - 2-design / 架构类任务再读 `.specs/ARCHITECTURE.md`（as-built，含 ADR-001~016）
   - 未决项见 `.specs/intel-scan-2026-11-20.md`「待用户确认」：Q1（Dictation 归属）、Q4（跨模块 Repository）
-  - 下一步：`@flow-kit/prompts/4-dev.md`，从 Wave 1（T01[P] + T02[P]）开始
+  - 下一步：`@flow-kit/prompts/6-review.md`
 
 ## 阻塞与待决策
 
 | 项 | 类型 | 详情 | 待谁 | 自 |
 |---|---|---|---|---|
+| **文档偏差待回写（3 条）** | 决策 | ① REQUIREMENT「超时即返回，不写任何状态」措辞过强（update_state 已在隔离 thread 写入，不碰原链/业务表）；② DESIGN §2.3 锚点公式 off-by-one；③ DESIGN §9.1 与实现不一致。均已在 TEST.md 结论段列出 | 用户 | 2026-11-22 |
 | Q1 Dictation 模块归属 | 决策 | 架构文档列为独立模块，代码中不存在，听写折入 task/practice | 用户 | 2026-11-20 |
 | Q4 跨模块 Repository 访问 | 决策 | 9 处现存违规（架构 §3.3 禁止），已登记技术债 TD-A | 用户 | 2026-11-20 |
 | ~~**W00 WIP 基线提交**~~ | 已解决 | 2026-11-21 已提交基线 `0383acd`（checkpoint 巡检：后端 5 文件 + 前端 6 文件 + e2e）。`admin/{router,service,schemas}.py` 现为干净基线，本 change 改动可独立成 commit 与回滚 | — | 2026-11-21 |
@@ -31,6 +32,7 @@
 
 ## 决策日志（最近 10 条，倒序）
 
+- `[2026-11-22]` **5-test 完成**：五轮金字塔，140 passed。抓到两个实质问题：① **AC-7 此前零覆盖**（超时/不抢锁都没测），补 `tests/test_checkpoint_replay_resilience.py` 4 条；② **pip-audit 报 dnspython 2.9.1 CVE-2026-128089（CVSS 7.5 High）**，已升 2.9.2 并复扫为 0，`uv.lock` 变更 → 生产发布需重装依赖。bandit 0 High、2 Medium（B608 误报，where 为常量二选一）；秘钥扫描 0 命中 — `TEST.md`
 - `[2026-11-21]` 4-dev 完成（T01–T06 + T-FIX-01，8 个提交）：后端新增 `POST /api/v1/admin/checkpoints/{thread}/{checkpoint}/replay`，全量 136 passed。两条已知取舍：`tokenUsage` 内层保持 snake_case 以对齐既有 `/agent/runs` 契约；`replay_anchor_ambiguous` 在线性图下无法构造，未覆盖 — `T06-SUMMARY.md`
 - `[2026-11-21]` T-FIX-01：`not src.values` 会把「存在的入口 checkpoint」误报成 404（入口的 values 也是 `{}`，输入在 pending writes 里）。改用 `src.created_at is None` 判存在；实测入口→409 terminal、不存在→404。由 T03 写测试时发现 — `T03-SUMMARY.md`
 - `[2026-11-21]` **DESIGN §2.3 被实测推翻**：`writes.branch:to` 指向的是「下一跳」而非「产出节点」，差一层。照原公式当 `as_node` 会一个节点都不跑却返回 200。已改为运行时读父快照的 `next` 解析锚点，`replay_from_checkpoint(thread_id, checkpoint_id)` 不再接收 anchor；`producing_node` 改名 `routing_target` 并标注不可用于锚点。DESIGN.md 本身未改，待批准回写 — `T02-SUMMARY.md`「决策与偏离」1

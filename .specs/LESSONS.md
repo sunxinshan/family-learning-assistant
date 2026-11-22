@@ -115,6 +115,28 @@ langgraph 变更 checkpoint 结构或 `update_state` 的 `as_node` 语义之后�
 
 ---
 
+### L-005 · [test] 换掉 `runtime.llm` 不会让节点变慢：`guidance` 里存了另一份引用
+
+- **首发**: checkpoint-replay · 5-test · 2026-11-22
+- **上次复核**: 2026-11-22
+- **适用栈**: 本项目 AgentRuntime（`FallbackGuidanceService` 构造时绑定 llm）
+- **状态**: active
+- **关键词**: 超时测试 timeout SlowLLM guidance 依赖注入 假 LLM 打不中节点
+
+**问题场景**
+要测「重放超时返回 504」，做法是把重放预算压到 0.1s、让 respond 节点慢 0.5s。于是把 `runtime.llm = SlowLLM()`。
+
+**为什么不行**
+`AgentRuntime.__init__` 里 `self.guidance = FallbackGuidanceService(llm, prompt_dir)` 把**构造时的** llm 存进了 guidance 实例。respond 节点调的是 `self.guidance.respond()` → 内部用 `guidance.llm`，与 `runtime.llm` 无关。结果 graph 一点没慢，`future.result(timeout=0.1)` 直接返回，测试报 `DID NOT RAISE`。
+
+**当前推荐做法**
+打桩要跟着调用链走：`runtime.llm = slow` **且** `runtime.guidance.llm = slow`。写这类测试时先确认节点实际调用的是哪个属性，别只看构造函数签名。
+
+**何时可重新评估**
+`FallbackGuidanceService` 改成每次从 runtime 取 llm，或 guidance 被移出图节点时。
+
+---
+
 ## 提名条件
 
 调试/试错 > 30 分钟；错因跨任务复用；6 个月内可能再撞；否决理由不写就丢。
