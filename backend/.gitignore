@@ -11,3 +11,9 @@ data/*.db-*
 data/uploads/
 data/*.db.*
 data/llm-trace*.jsonl
+
+# 本地调试脚本（硬编码本机路径，读 data/llm-trace.jsonl）
+log.sh
+
+# 空的 observability 占位目录，尚未接线，不随仓库分发
+app/infrastructure/observability/
