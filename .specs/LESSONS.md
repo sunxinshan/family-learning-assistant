@@ -137,6 +137,93 @@ langgraph 变更 checkpoint 结构或 `update_state` 的 `as_node` 语义之后�
 
 ---
 
+### L-006 · [arch, test] 「图节点只读」是按节点名想出来的假设，必须按路由核对
+
+- **首发**: checkpoint-replay · 6-review · 2026-11-23
+- **上次复核**: 2026-11-23
+- **适用栈**: 本项目 `build_agent_graph` / `AgentBusinessService`
+- **状态**: active
+- **关键词**: 只读 无副作用 AC-3 图节点 prepare vocabulary_import content_extractions 结构性保证
+
+**问题场景**
+重放功能的无副作用保证写成了「图内四节点 classify/prepare/tool_create/respond 只读，写入只在 runtime 层」，
+据此判定 AC-3 是结构性成立、不需要 dry-run 开关。
+
+**为什么不行**
+`prepare` 是**同一个节点名下一个多路分派**：`prepare_vocabulary_import` 会调
+`ContentService.extract()`，后者 `repository.add(ContentExtraction)` 且改 `material.status="parsed"`，
+`Database.session()` 退出即 commit。所以「prepare 只拼 pending_action」只对 task_create/update/delete/
+vocabulary_create 成立，对 vocabulary_import 是错的。节点的名字给了一种虚假的同质性。
+
+**当前推荐做法**
+写「某层只读/无副作用」这类全局断言时，逐个**入口分支**核对，不按节点名概括：
+`grep -n "business\.\|Service(" 每个节点函数`，再追被调方法里的 `add/commit/save/delete`。
+断言要落到「跨路由」的用例上（至少一条 chat + 一条会写库的路由），否则等于没测。
+
+**何时可重新评估**
+图改成分节点（`prepare_vocabulary_import` 独立成节点），或写入统一收敛到 runtime 层之后。
+
+---
+
+### L-007 · [ops, tool] 只在 sqlite 上验过的路径，等于没验过生产的那条路径
+
+- **首发**: checkpoint-replay · 6-review · 2026-11-23
+- **上次复核**: 2026-11-23
+- **适用栈**: 本项目 checkpoint 库（SQLite 本地 / MySQL 生产）
+- **状态**: active
+- **关键词**: mysql pymysql MySQLdb create_engine 驱动 表名 writes checkpoint_writes 方言
+
+**问题场景**
+`CheckpointRepository` 用 `create_engine(settings.checkpoint_url)` 直连 checkpoint 库，测试全在 sqlite 上跑。
+
+**为什么不行**
+两处方言差异同时踩中：① 生产 URL 是 `mysql://…`（没有驱动后缀），SQLAlchemy 会去找 `MySQLdb`，
+抛 `ModuleNotFoundError` —— 它不是 `SQLAlchemyError`，`except` 吞不住，直接 500；
+② 查询写死 sqlite 独有的 `writes` 表（MySQL saver 用 `checkpoint_writes`），即便驱动修好也会恒返回空。
+两处都只在「本地 sqlite + `mysql+pymysql://`」这套组合下才看不出来。
+
+**当前推荐做法**
+配置里出现 `mysql:` 的地方，统一改写 `mysql+pymysql://`（`make_url(...).set(drivername=...)`）；
+表名/列名按 backend 分支并抽成一个私有函数，别在多个方法里各写一遍。
+测试至少加一条「mysql 配置下生成的 SQL 指向 checkpoint_writes」的断言（mock 引擎即可，不需要真库）。
+
+**何时可重新评估**
+checkpoint 访问统一走一个 adapter（sqlite/mysql 各自实现），表名只在一处出现时。
+
+---
+
+### L-008 · [lib, arch] 超时后「关连接」不是收尾，是把连接交给一个还在跑的线程去重连
+
+- **首发**: checkpoint-replay · T-FIX-04 · 2026-11-23
+- **上次复核**: 2026-11-23
+- **适用栈**: pymysql / PyMySQLSaver / ThreadPoolExecutor 超时模式
+- **状态**: active
+- **关键词**: 超时 timeout 孤儿线程 shutdown wait=False ping reconnect 连接泄漏 归属 谁最后用完谁关
+
+**问题场景**
+长任务套 `future.result(timeout=N)`，超时后 `executor.shutdown(wait=False)`，然后外层 `with` 退出、
+把连接 `close()` 掉，以为「这就收尾了」。504 也确实按时返回了。
+
+**为什么不行**
+线程杀不掉，worker 还在图里写 checkpoint → 客户端对象已被 close → 抛 `InterfaceError` →
+「连接级异常就重连重试一次」的包装调用 `ping(reconnect=True)` → pymysql 在 `_sock is None` 时
+**真的重连** → 一条新连接被创建，而它的所有者（请求线程）早已退出、再没人关它。
+于是每次超时泄漏一条连接，直到 `max_connections` —— 与「超时保护在线服务」的初衷正相反。
+sqlite 则是另一条死法：`Cannot operate on a closed database` 不在重试名单里，图半途终止且异常挂在被丢弃的 Future 上，日志里只有一行 timeout。
+
+**当前推荐做法**
+1. 取消标志（`threading.Event`）先置位，让 worker 的**重连分支**直接短路成「放弃」，把重连这条路堵死；
+2. 连接归属改成「谁最后用完谁关」：`close()` 幂等；超时后先等一个 `_DRAIN_SECONDS` 宽限，
+   结束了由请求线程关，没结束就把 manager 交给 worker，在 `add_done_callback` 里关并记它的结局（结束/异常）；
+3. 不要用 `with` 包住「可能被超时打断」的 saver —— `__exit__` 的语义是「我现在独占它」。
+4. 测试断言分两步：504 返回时 `manager._closed is False`；worker 结束后 `is True`。
+   只测其中一步都看不出泄漏。
+
+**何时可重新评估**
+图执行改成可协作取消（节点间检查取消标志）或换成可 kill 的进程隔离执行时。
+
+---
+
 ## 提名条件
 
 调试/试错 > 30 分钟；错因跨任务复用；6 个月内可能再撞；否决理由不写就丢。

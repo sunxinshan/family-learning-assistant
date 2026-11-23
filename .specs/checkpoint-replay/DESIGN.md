@@ -93,7 +93,7 @@ where thread_id = :thread_id
 - 命中 1 条 → 用它。
 - 0 条或多条 → **拒绝**（`replay_anchor_ambiguous`），不猜。多分支图（未来的并行边）会落到这里，属于安全失败。
 
-### 2.4 为什么不需要 dry-run 开关（ADR-018）
+### 2.4 为什么不需要 dry-run 开关（ADR-018，2026-11-23 按 REVIEW C-1 修正）
 
 业务写入只发生在两处，都不在图内：
 
@@ -102,19 +102,41 @@ where thread_id = :thread_id
 | 消息落库（user / assistant / tool_call / tool_result） | `_execute_new_run` / `_execute_confirm` 在图执行**之后**调用 | ❌ 不经 |
 | 业务写入（建任务、删任务、建词库） | `AgentBusinessService.execute()`，仅由 `_execute_confirm` 调用 | ❌ 不经 |
 
-图内四个节点 `classify` / `prepare` / `tool_create` / `respond` 只读：`prepare_*` 只拼 `pending_action`，`tool_create` 走**只读预览**工具（AGENTS.md 已约定"预览类工具只读"），`respond` 只查统计数据。已核对 `agent/service.py`：`execute()` 之外无 `.add/.delete/commit`。
+**原文"图内四个节点只读"是错的**（6-review C-1）：漏了 `prepare` 的**分支副作用** ——
+`prepare_vocabulary_import` 会调 `ContentService.extract()`（`agent/service.py:500`），
+它 `repository.add(ContentExtraction)` 且 `material.status="parsed"`（`content/service.py:61-62`），
+`Database.session()` 退出即 commit。按节点名概括"只读"，等于把整条无副作用论证建在假前提上。
 
-因此重放"不写"是**结构性**的：只要不调 runtime 的落库与确认函数，就写不出去。比撒一堆 `if dry_run` 可靠。
+逐节点的真实副作用（复核结论，替代原来的概括）：
+
+| 节点 | 真实副作用 | 可否重放 |
+|---|---|---|
+| `classify` | 无（一次 LLM 调用） | ✅ |
+| `tool_create` | 只读预览工具（AGENTS.md 已约定预览类工具只读） | ✅ |
+| `prepare`（task_create / task_update / task_delete / vocabulary_create） | 只读查询 + 拼 `pending_action` | ✅ |
+| `prepare`（**vocabulary_import**） | **写 `content_extractions`、改 `materials.status`** | ❌ 409 `replay_unsupported_route` |
+| `respond` | 查统计数据（learning）或调兜底 LLM | ✅ |
+| `wait` | 只调 `interrupt()`；`business.execute()` 在**恢复**时才走，重放没有恢复值 | ✅ 但停在 interrupt（响应 `interrupted=true`） |
+
+因此"不写"仍是**结构性**的，但"结构"要说全：
+① 不调 runtime 的落库/确认函数；② 不重放带副作用的 `prepare` 分支（路由级 409 拒绝）。
+比撒一堆 `if dry_run` 可靠 —— 因为漏掉一个分支就会静默写库，而路由拒绝会立刻报错。
 
 ### 2.5 连接与并发（ADR-020）
 
 硬约束：`PyMySQLSaver` 内部是**一条** `pymysql.Connection`（11-20 的 `InterfaceError` 就是它）。同一条连接上并发跑两个图，cursor 会互相打断。
 
-因此重放**不共用**主连接，而是 `with CheckpointerManager(settings) as replay_saver:` 自开一条，跑完即关；图用这个 saver 重建：
+因此重放**不共用**主连接，而是自己开一条（`CheckpointerManager(settings)` → `saver`），跑完即关；图用这个 saver 重建：
 
 ```python
 graph = build_agent_graph(replay_saver, self.llm, self.business, self.guidance, self.tool_workflow)
 ```
+
+**不用 `with`**：`__exit__` 会 `shutdown(wait=True)`，超时形同虚设；而超时后请求线程若直接 close，
+仍在跑的重放线程下一次写就会 `ping(reconnect=True)` 把连接**复活**，且再没人关（每次超时泄漏一条）。
+所以连接归属按"谁最后用完谁关"：
+`manager.close()` 幂等；超时后先等孤儿线程 `_REPLAY_DRAIN_SECONDS`，结束了由请求线程关，
+没结束就把 manager 交给孤儿线程（`add_done_callback` 里关，并记录它的结局）。
 
 好处是不用抢 `self._execution_lock`（那个锁在 `_execute_new_run` / `_execute_confirm` 里持有，抢不到就会让真实用户排队甚至租约过期）。代价是每次重放多一次 MySQL 建连（约几十毫秒，管理员调试场景可接受），且连接数 +1（需在 `max_connections` 余量内）。
 
@@ -140,6 +162,7 @@ POST /api/v1/admin/checkpoints/{thread_id}/{checkpoint_id}/replay
   "replay": {
     "thread_id": "replay-…", "route": "task_create", "response": "…",
     "pending_action": {"operation": "create_task"},
+    "interrupted": true,
     "token_usage": {"prompt_tokens": 812, "completion_tokens": 96},
     "duration_ms": 2410, "prompt_version": "main_agent:abc123def456",
     "model": "deepseek-v4-flash", "checkpoint_rows_added": 3
@@ -148,7 +171,12 @@ POST /api/v1/admin/checkpoints/{thread_id}/{checkpoint_id}/replay
 }
 ```
 
-错误码：`checkpoint_not_found` 404 / `checkpoint_terminal` 409 / `checkpoint_interrupted` 409 / `replay_anchor_ambiguous` 409 / `checkpoint_store_unavailable` 503 / `replay_timeout` 504。
+`replay.interrupted`：重放停在 `wait`（等人工确认）时为 `true` —— 200 不等于"跑完了"，
+没有这个字段，管理员会把"停在确认环节"读成"重放没生成回答"（6-review M-4）。
+
+错误码：`checkpoint_not_found` 404 / `checkpoint_terminal` 409 / `checkpoint_interrupted` 409 /
+`replay_anchor_ambiguous` 409 / `replay_unsupported_route` 409（vocabulary_import 等有副作用的 prepare 分支）/
+`checkpoint_store_unavailable` 503（库连不上、驱动缺失、表名方言不对 —— **不是** 404） / `replay_timeout` 504。
 
 > `prompt_version` 必须两边都给。重放用**当前** prompt，"结果不同"常常只是版本变了 —— 不给版本号，这个功能第一天就会被误读成"重放不稳定"。
 

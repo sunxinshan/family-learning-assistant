@@ -26,6 +26,11 @@
 重放不得新增/修改：`conversation_messages`、`agent_runs`、`agent_run_events`、以及 task / vocabulary / practice 等业务表任何行。
 此条为**结构性保证**（不经过写入路径），不依赖运行时开关。
 
+> **2026-11-23 修订（6-review C-1，实测后补）**：`prepare` 的 `vocabulary_import` 分支会调
+> `ContentService.extract()`，写 `content_extractions` 并改 `materials.status` —— 该路由重放**结构性做不到**无副作用。
+> 因此把它列为**不可重放路由**（`replay_unsupported_route` 409），AC-3 对「可重放路由」成立。
+> 这不是放宽 AC-3，而是把"哪些路由根本不许重放"写清：宁可拒绝，也不假装只读。
+
 ### AC-4 · 目标不可重放时明确拒绝
 以下情况返回明确错误码与说明，不做任何执行：
 目标 checkpoint 不存在；该点已到 `END`（`next` 为空，无可执行节点）；该点处于 `interrupt` 挂起且尚未解决。

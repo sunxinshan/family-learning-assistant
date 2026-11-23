@@ -360,6 +360,11 @@ Wave 5:            T07                    (←T06，部署后执行，属 7-inte
 |---|---|---|---|
 | W00 | 三个 admin 文件同时含 WIP 与本 change 改动，无法按文件切分提交 | 是否先提交 checkpoint 巡检 WIP 作为基线（建议提交） | 2026-11-21 |
 | T07 | 需先部署新 release 才能在真实数据上验证 | 部署时机（是否随本 change 一起发布） | 2026-11-21 |
+| ~~T-FIX-02~~ | **已解阻（2026-11-23）**：用户选 remedy ① | — | 2026-11-23 |
+| ~~T-FIX-06~~ | **已解阻（2026-11-23）**：用户选「保留 + 标 `# v2: 尚无调用方` + 同修方言」 | — | 2026-11-23 |
+
+> 2026-11-23 用户决策（原文）：**「重放前用 409 拒绝 vocabulary_import 路由，留并标 # v2: 尚无调用方，同时必须一并修复 MySQL 方言」**。
+> T-FIX-02~06 已按此执行完毕，见下「Fix 执行记录」。
 
 ---
 
@@ -431,6 +436,213 @@ grandparent  branch:to 目标 = 'a'
   <depends_on>T02,T03</depends_on>
 </task>
 ```
+
+## Fix 任务（来自 6-review · 2026-11-23）
+
+> 来源：`.specs/checkpoint-replay/REVIEW.md`。C-1 / C-2 未修或未显式接受前，禁止进 7-integration（R2.5）。
+
+```xml
+<task id="T-FIX-02" parallel="false" status="done" completed_at="2026-11-23 17:18">
+  <name>AC-3 修复：阻止重放写业务表（vocabulary_import 路由）</name>
+  <read_files>
+    backend/app/modules/agent/runtime.py
+    backend/app/modules/agent/service.py
+    backend/app/modules/content/service.py
+    backend/tests/test_checkpoint_replay_unit.py
+  </read_files>
+  <write_files>
+    backend/app/modules/agent/runtime.py
+    backend/tests/test_checkpoint_replay_unit.py
+    .specs/checkpoint-replay/REQUIREMENT.md（仅当选择 remedy ③）
+    .specs/checkpoint-replay/DESIGN.md（§2.4 节点清单回写）
+  </write_files>
+  <action>
+    根因：`prepare` 节点的 `vocabulary_import` 分支会 `ContentService.extract()`，
+    该方法 `repository.add(ContentExtraction)` 且改 `material.status="parsed"`，
+    `Database.session()` 退出即 commit —— 重放到该路由会真写业务表，违反 AC-3。
+
+    三条 remedy，须用户先选一条（REVIEW.md C-1），默认建议 ①：
+    ① 重放前拒绝：`route in {"vocabulary_import"}` → AppError("replay_unsupported_route", 409)；
+       在 `replay_from_checkpoint` 的拒绝段（现有 4 条守卫之后）加这一条，错误文案说明
+       「该路由的 prepare 会产生解析产物，重放不安全」。
+    ② 拆 `ContentService.extract` 为「纯渲染草稿」+「显式落库」两步，重放只走前者（动 content 模块，范围更大）。
+    ③ 不改代码，把「vocabulary_import 不可重放」写进 REQUIREMENT/AC-3 例外并留痕（不推荐）。
+
+    无论选哪条，都必须补测试：新增「task_create（tool_calling 关闭）路由」与「vocabulary_import 路由」
+    两条 AC-3 断言（重放前后 `content_extractions` / `materials.status` / `conversations` 计数与状态不变），
+    证明无副作用是**跨路由**成立而不是只在 chat 上成立。
+  </action>
+  <verify>
+    cd backend && .venv/bin/pytest -q --basetemp=/tmp/fla-fix02 tests/test_checkpoint_replay_unit.py tests/test_checkpoint_replay_api.py
+  </verify>
+  <done>
+    vocabulary_import 路由要么被 409 明确拒绝、要么不再落库；AC-3 用例覆盖 ≥2 条非 chat 路由且全绿；
+    DESIGN §2.4 的「图内节点只读」清单已改正（含 wait 与各 prepare 分支的真实副作用）
+  </done>
+  <depends_on>T06</depends_on>
+</task>
+
+<task id="T-FIX-03" parallel="false" status="done" completed_at="2026-11-23 17:18">
+  <name>AC-6 修复：MySQL 方言与 503 降级、存在性文案统一、失败留痕</name>
+  <read_files>
+    backend/app/modules/admin/checkpoint_repository.py
+    backend/app/modules/admin/service.py
+    backend/app/modules/admin/router.py
+    backend/app/core/config.py
+    backend/tests/test_admin_checkpoints.py
+  </read_files>
+  <write_files>
+    backend/app/modules/admin/checkpoint_repository.py
+    backend/app/modules/admin/service.py
+    backend/tests/test_checkpoint_replay_api.py
+  </write_files>
+  <action>
+    1) 驱动：`_url()` 对 mysql 统一改写 `mysql+pymysql://`（`make_url(...).set(drivername="mysql+pymysql")`），
+       别再让 `create_engine` 去找 MySQLdb。
+    2) 方言：`get()` / `routing_target()` / `count_thread()` 里的表名与列名按 backend 分支 ——
+       sqlite 是 `writes(type,value)`，MySQL 是 `checkpoint_writes(type,blob)`；抽一个
+       `_writes_table()` / `_value_column()` 私有函数，禁止在两处硬编码同一方言。
+    3) 错误码：库不可用（`_url()` 为 None、连接失败、非 SQLAlchemyError 的驱动异常）→
+       `AppError("checkpoint_store_unavailable", 503)`；「不存在」仍 404。两件事不能再合用一个 404。
+    4) `except SQLAlchemyError` 之外补 `except Exception` → 503 + `logger.exception`，杜绝 500。
+    5) 文案统一：三处 `checkpoint_not_found`（service:127 / service:155 / runtime:875）抽一个工厂。
+    6) 审计：`replay_checkpoint` 用 try/finally，失败也记一条 admin 操作日志（带结果码）。
+  </action>
+  <verify>
+    cd backend && .venv/bin/pytest -q --basetemp=/tmp/fla-fix03 tests/test_checkpoint_replay_api.py tests/test_admin_checkpoints.py && .venv/bin/python -c "
+from app.core.config import Settings
+from app.modules.admin.checkpoint_repository import CheckpointRepository
+s=Settings(checkpoint_backend='mysql', checkpoint_url='mysql://u:p@127.0.0.1:1/db')
+assert CheckpointRepository(s)._url().startswith('mysql+pymysql://')"
+  </verify>
+  <done>
+    mysql URL 被改写为 pymysql 方言；库不可用返回 503 `checkpoint_store_unavailable`（不再 404/500）；
+    新增「mysql 配置下 get() 用 checkpoint_writes」的单测（可用 mock 引擎断言 SQL 文本）；
+    失败的重放也在 admin 操作日志里留痕
+  </done>
+  <depends_on>T06</depends_on>
+</task>
+
+<task id="T-FIX-04" parallel="false" status="done" completed_at="2026-11-23 17:18">
+  <name>超时路径收尾：别让孤儿线程复活已关闭连接</name>
+  <read_files>
+    backend/app/modules/agent/runtime.py
+    backend/app/infrastructure/checkpoint.py
+    backend/tests/test_checkpoint_replay_resilience.py
+  </read_files>
+  <write_files>
+    backend/app/modules/agent/runtime.py
+    backend/tests/test_checkpoint_replay_resilience.py
+  </write_files>
+  <action>
+    现状：`future.result(timeout=60)` 超时后 `executor.shutdown(wait=False)`，随后 `with CheckpointerManager`
+    `__exit__` 把 saver 的连接关掉；worker 仍在跑，下一次写抛 InterfaceError → `_with_checkpoint_retry`
+    调 `ping(reconnect=True)` → pymysql 重连成功 → 连接被复活且再无人关闭（每次超时泄漏一条），
+    sqlite 分支则 `ProgrammingError` 半途终止。异常都挂在被丢弃的 Future 上，日志看不到。
+
+    改法（按 REVIEW M-1，倾向 ①）：
+    ① 给 worker 一个 `threading.Event` 取消标志，节点间无法插桩时退化为：超时后
+       `shutdown(wait=True, timeout=2s)` 再关连接，超 2s 仍未结束则把 saver 与 replay_thread 交给
+       进程级清理登记表（记日志、留给 v2 TTL 任务），**不立即 close**。
+    ② 无条件给 future 挂 `add_done_callback`：异常用 `logger.exception` 打出（含 replay_thread）。
+    ③ 顺手：`checkpoint_rows_added` 改 `sum(1 for _ in graph.get_state_history(...))`，
+       并补 `_with_checkpoint_retry` 包装（REVIEW m-1/m-2）。
+    验证要点：超时用例跑完后，进程内不应出现「连接数 +1 且无归属」的状态；日志里必须能看到孤儿线程
+    的结局（正常结束/异常），而不是只有一行 timeout warning。
+  </action>
+  <verify>
+    cd backend && .venv/bin/pytest -q --basetemp=/tmp/fla-fix04 tests/test_checkpoint_replay_resilience.py tests/test_checkpoint_replay_unit.py
+  </verify>
+  <done>
+    超时后不再对仍在使用的连接执行 close（或 close 前确保 worker 已退出）；孤儿线程的异常一定进日志；
+    韧性用例新增一条「超时后连接/线程收尾」断言并全绿
+  </done>
+  <depends_on>T06</depends_on>
+</task>
+
+<task id="T-FIX-05" parallel="false" status="done" completed_at="2026-11-23 17:18">
+  <name>重放结果标明「是否停在确认环节」</name>
+  <read_files>
+    backend/app/modules/agent/runtime.py
+    backend/app/modules/admin/schemas.py
+    backend/tests/test_checkpoint_replay_api.py
+  </read_files>
+  <write_files>
+    backend/app/modules/agent/runtime.py
+    backend/app/modules/admin/schemas.py
+    backend/tests/test_checkpoint_replay_api.py
+  </write_files>
+  <action>
+    默认配置（tool_calling 关闭）下 task_create 走 classify→prepare→wait，重放 `next=('wait',)` 的快照
+    会再次 interrupt 并正常返回 200，`replay.response` 为空但结果里没有任何说明，管理员会读成
+    「重放没生成回答」。
+
+    在 runtime 返回值与 `ReplayRunOut` 增加 `interrupted: bool`（取自 `out.next` 非空或 `out.get("__interrupt__")`），
+    并在 `checkpointRowsAdded` 旁一并返回；API 用例断言该字段为 camelCase `interrupted`。
+    若 T-FIX-02 选了「按路由拒绝」，则这里只对 wait 锚点做标识，不拒绝。
+  </action>
+  <verify>
+    cd backend && .venv/bin/pytest -q --basetemp=/tmp/fla-fix05 tests/test_checkpoint_replay_api.py tests/test_checkpoint_replay_unit.py
+  </verify>
+  <done>
+    重放在 wait 处停住时 200 响应带 `replay.interrupted=true`；DESIGN §3 响应体同步补该字段
+  </done>
+  <depends_on>T06</depends_on>
+</task>
+
+<task id="T-FIX-06" parallel="false" status="done" completed_at="2026-11-23 17:18">
+  <name>处置 routing_target / count_thread（零调用方）</name>
+  <read_files>
+    backend/app/modules/admin/checkpoint_repository.py
+    backend/tests/test_checkpoint_anchor_repository.py
+    .specs/checkpoint-replay/TASK.md
+  </read_files>
+  <write_files>
+    backend/app/modules/admin/checkpoint_repository.py（仅当保留）
+    backend/tests/test_checkpoint_anchor_repository.py（仅当保留）
+  </write_files>
+  <action>
+    T04「修正 2」后这两个方法已不在重放链路，`grep -rn "routing_target|count_thread" app/` 无调用点，
+    合计 279 行（含测试）无事可做，且 C-2 的 MySQL 表名问题正好藏在这段无调用代码里。
+
+    二选一（用户拍板，倾向 ①）：
+    ① 删除方法与 `tests/test_checkpoint_anchor_repository.py`；v2 做管理页诊断时按需重写。
+    ② 保留但加 `# v2: 尚无调用方`，并在 T-FIX-03 里一并修 MySQL 方言（不可只修一半）。
+  </action>
+  <verify>
+    cd backend && .venv/bin/pytest -q --basetemp=/tmp/fla-fix06 && grep -rn "routing_target\|count_thread" app/ | grep -v "^Binary" || true
+  </verify>
+  <done>
+    仓库内不再存在「无调用方且声明与实现可能不一致」的 checkpoint 诊断方法；全量用例仍绿
+  </done>
+  <depends_on>T-FIX-03</depends_on>
+</task>
+```
+
+---
+
+## Fix 执行记录（2026-11-23，T-FIX-02~06）
+
+全量 **156 passed**（原 140 + 新增 16），`ruff check` / `ruff format` 干净（仅剩 4 条本 change 之外的既有 E501）。
+
+| 任务 | 落地内容 | 证据 |
+|---|---|---|
+| T-FIX-02 | `runtime.py` 新增 `_UNSAFE_REPLAY_ROUTES = {"vocabulary_import"}`，在锚点解析后、`update_state` 前抛 409 `replay_unsupported_route`（文案点名 content_extractions / material.status） | `test_replay_rejects_vocabulary_import_route`、`test_replay_writes_nothing_on_task_create_route`（跨路由 AC-3，含 `materials.status` 指纹） |
+| T-FIX-03 | `_url()` 用 `make_url(...).set(drivername="mysql+pymysql")` + `render_as_string(hide_password=False)`；`_writes_table()` / `_writes_query()` 按 backend 选 `writes(value)` / `checkpoint_writes(blob)`；`get()` 只在「记录不存在」返回 None，库不可用/驱动缺失/方言错误一律 503；`except SQLAlchemyError` 全换成 `except Exception` + `logger.exception`；三处 404 文案收敛到 `checkpoint_not_found_error()`；`replay_checkpoint` 失败也写审计日志（`result="failure"` + 结果码，显式 commit 抵消 `get_session` 回滚） | `test_checkpoint_repository_mysql.py`（9 条：URL 改写、两种方言 SQL、mysql 详情查 `checkpoint_writes`、503 三形态）、`test_replay_degrades_when_checkpoint_store_missing`（改为 503）、`test_replay_failure_is_audited` |
+| T-FIX-04 | 超时不再由请求线程 close：`abandoned` 事件堵掉孤儿线程的 `ping(reconnect=True)`（`_invoke_replay_graph`）；`CheckpointerManager.close()` 幂等；`_REPLAY_DRAIN_SECONDS=2` 内收尾则请求线程关，否则 `_hand_over_checkpointer` 交给孤儿线程（done_callback 记录结局并关连接，登记表 `_ABANDONED_REPLAY_THREADS` 供 v2 TTL） | `test_replay_worker_does_not_reconnect_after_abandon`、`test_replay_worker_still_retries_when_not_abandoned`（正常路径未被改坏）、`test_timeout_hands_connection_to_orphan_thread`（超时后 `_closed is False` → 线程结束后自动关） |
+| T-FIX-05 | `final = get_state(...)` 取 `values/next/tasks` 三样，`interrupted = bool(final.next) or any(task.interrupts)`；`ReplayRunOut` 增 `interrupted: bool = False` | `test_replay_marks_chat_route_as_not_interrupted`、`test_replay_writes_nothing_on_task_create_route`（wait 处为 True）、API 契约断言 `interrupted is False` |
+| T-FIX-06 | 保留 `routing_target` / `count_thread`，方法上标 `# v2: 尚无调用方`，并让它们与 `get()` 共用 `_writes_table()`（不再只修一半） | `test_routing_target_reads_checkpoint_writes_on_mysql`；原 6 条锚点用例仍绿（sqlite 路径未变） |
+
+**执行中的两个偏离（记录以免误读）**
+
+1. **新增测试文件** `tests/test_checkpoint_repository_mysql.py`，未写进原 `write_files`（原计划塞进 `test_checkpoint_replay_api.py`）。
+   理由：方言/降级是 repository 层契约，放 API 文件里要绕过一整层 HTTP 才能断言 SQL 文本。
+2. **`test_replay_degrades_when_checkpoint_store_missing` 的造法换了**：`create_app` 启动时 `saver.setup()` 会把 checkpoint 库建出来，
+   所以「换路径 → 库不存在」不再成立（实测退化成 404 且语义正确）。改为启动后改 `app.state.settings.checkpoint_sqlite_path` 指向不存在路径，
+   才是真正的「库掉线」→ 503。
+
+**同时回写的文档**：DESIGN §2.4（逐节点副作用表，推翻"四节点只读"）、§2.5（连接归属）、§3（`interrupted` 字段 + `replay_unsupported_route`）；
+REQUIREMENT AC-3（不可重放路由的说明）。
 
 ---
 

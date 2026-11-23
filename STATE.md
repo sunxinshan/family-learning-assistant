@@ -7,21 +7,23 @@
 ## 当前位置
 
 - **活跃 Change**: `checkpoint-replay`（从历史 checkpoint 分叉重跑）
-- **当前阶段**: **5-test 完成** —— 五轮金字塔跑完，140 用例全绿，AC 7/7 覆盖。产物 `.specs/checkpoint-replay/TEST.md`。下一步 `6-review`
-- **当前 Task**: —（T07 属 7-integration，待部署后执行）
+- **当前阶段**: **6-review 的 fix 已全部完成 → 待进 7-integration** —— T-FIX-02~06 落地，全量 **156 passed**（+16 条用例），C-1/C-2/M-1/M-2/M-3/M-4 全部复核关闭。下一步 `7-integration` 做 T07 生产取证（需先部署新 release）
+- **当前 Task**: —（T07 属 7-integration）
 - **中断任务**（来自 R1.5 清窗）: 无
 - **会话开始建议**:
   - 先读 `.specs/CONTEXT.md`（rules 层，每次必读）
-  - 本 change 再读 `.specs/checkpoint-replay/{CHANGE,REQUIREMENT,DESIGN,TASK,TEST}.md`
+  - 本 change 再读 `.specs/checkpoint-replay/{CHANGE,REQUIREMENT,DESIGN,TASK,TEST,REVIEW}.md`（REVIEW 末尾有「修复复核」表）
   - 2-design / 架构类任务再读 `.specs/ARCHITECTURE.md`（as-built，含 ADR-001~016）
   - 未决项见 `.specs/intel-scan-2026-11-20.md`「待用户确认」：Q1（Dictation 归属）、Q4（跨模块 Repository）
-  - 下一步：`@flow-kit/prompts/6-review.md`
+  - 下一步：`@flow-kit/prompts/7-integration.md`（T07 生产取证）
 
 ## 阻塞与待决策
 
 | 项 | 类型 | 详情 | 待谁 | 自 |
 |---|---|---|---|---|
-| **文档偏差待回写（3 条）** | 决策 | ① REQUIREMENT「超时即返回，不写任何状态」措辞过强（update_state 已在隔离 thread 写入，不碰原链/业务表）；② DESIGN §2.3 锚点公式 off-by-one；③ DESIGN §9.1 与实现不一致。均已在 TEST.md 结论段列出 | 用户 | 2026-11-22 |
+| ~~**6-review 两项 Critical 待修**~~ | 已解决 | 2026-11-23 按用户决策修完：C-1 改为重放前置 409 拒绝 `vocabulary_import`（`replay_unsupported_route`）；C-2 修 MySQL 方言（`mysql+pymysql` + `checkpoint_writes(blob)`）并把「库不可用」与「不存在」分成 503/404。见 `REVIEW.md`「修复复核」 | — | 2026-11-23 |
+| **C-2 的 500 分支待服务器核实** | 核实 | 仅剩「环境变量字面值」这一项未知：`grep -E 'FLA_CHECKPOINT' /opt/project2/shared/env/familylearning.env`。代码已对两种写法都做了兼容，此项只影响「根因描述」不影响可用性 | 用户 | 2026-11-23 |
+| **文档偏差待回写（3 条）** | 决策 | ① REQUIREMENT「超时即返回，不写任何状态」措辞过强（update_state 已在隔离 thread 写入，不碰原链/业务表）；② DESIGN §2.3 锚点公式 off-by-one；③ DESIGN §9.1 与实现不一致。**原本第 4 条（DESIGN §2.4 节点只读清单）已于 2026-11-23 回写为逐节点副作用表** | 用户 | 2026-11-23 |
 | Q1 Dictation 模块归属 | 决策 | 架构文档列为独立模块，代码中不存在，听写折入 task/practice | 用户 | 2026-11-20 |
 | Q4 跨模块 Repository 访问 | 决策 | 9 处现存违规（架构 §3.3 禁止），已登记技术债 TD-A | 用户 | 2026-11-20 |
 | ~~**W00 WIP 基线提交**~~ | 已解决 | 2026-11-21 已提交基线 `0383acd`（checkpoint 巡检：后端 5 文件 + 前端 6 文件 + e2e）。`admin/{router,service,schemas}.py` 现为干净基线，本 change 改动可独立成 commit 与回滚 | — | 2026-11-21 |
@@ -32,6 +34,9 @@
 
 ## 决策日志（最近 10 条，倒序）
 
+- `[2026-11-23]` **6-review fix 全部完成，全量 156 passed**。用户拍板：`vocabulary_import` 重放前 409 拒绝（remedy ①）；`routing_target/count_thread` 保留 + 标 `# v2: 尚无调用方` + 同修方言。落地要点：① `_UNSAFE_REPLAY_ROUTES` 路由守卫（409 `replay_unsupported_route`）；② `_url()` 强制 `mysql+pymysql`、`_writes_table()/_writes_query()` 按 backend 切 `writes(value)`/`checkpoint_writes(blob)`、`get()` 只在「不存在」返回 None（库不可用→503）、三处 404 文案收敛、失败重放写审计日志（显式 commit 抵 rollback）；③ 超时后用 `abandoned` 事件堵掉孤儿线程的 `ping(reconnect=True)`，连接归属「谁最后用完谁关」（`_hand_over_checkpointer` + done_callback）；④ 响应加 `replay.interrupted`；⑤ `checkpoint_rows_added` 补 retry 包装。新增 `tests/test_checkpoint_repository_mysql.py`（9 条方言/降级用例）。回写 DESIGN §2.4/§2.5/§3 与 REQUIREMENT AC-3 — `REVIEW.md`「修复复核」、`TASK.md`「Fix 执行记录」
+
+- `[2026-11-23]` **6-review 完成，结论：阻塞**。2 Critical：C-1 重放 `vocabulary_import` 会真写 `content_extractions` + 改 `material.status`（AC-3 失守，根因是 DESIGN §2.4「图内节点只读」清单漏了 prepare 的分支副作用）；C-2 MySQL 后端下 `get()` 查 sqlite 独有的 `writes` 表 → 预检恒 404（确定命中）；若服务器 env 里是 `mysql://` 无驱动后缀（仓库内示例全是这个写法），`create_engine` 还会 `ModuleNotFoundError` → 500（条件命中，待服务器核实）（AC-6 失守）。4 Major：超时后孤儿线程把已关连接复活（泄漏）、存在性判定三处重复且 503 码未实现、重放到 wait 静默 interrupt 无标识、`routing_target/count_thread` 零调用方 279 行。fix 任务 T-FIX-02~06；沉淀 LESSONS L-006/L-007 — `REVIEW.md`
 - `[2026-11-22]` **5-test 完成**：五轮金字塔，140 passed。抓到两个实质问题：① **AC-7 此前零覆盖**（超时/不抢锁都没测），补 `tests/test_checkpoint_replay_resilience.py` 4 条；② **pip-audit 报 dnspython 2.9.1 CVE-2026-128089（CVSS 7.5 High）**，已升 2.9.2 并复扫为 0，`uv.lock` 变更 → 生产发布需重装依赖。bandit 0 High、2 Medium（B608 误报，where 为常量二选一）；秘钥扫描 0 命中 — `TEST.md`
 - `[2026-11-21]` 4-dev 完成（T01–T06 + T-FIX-01，8 个提交）：后端新增 `POST /api/v1/admin/checkpoints/{thread}/{checkpoint}/replay`，全量 136 passed。两条已知取舍：`tokenUsage` 内层保持 snake_case 以对齐既有 `/agent/runs` 契约；`replay_anchor_ambiguous` 在线性图下无法构造，未覆盖 — `T06-SUMMARY.md`
 - `[2026-11-21]` T-FIX-01：`not src.values` 会把「存在的入口 checkpoint」误报成 404（入口的 values 也是 `{}`，输入在 pending writes 里）。改用 `src.created_at is None` 判存在；实测入口→409 terminal、不存在→404。由 T03 写测试时发现 — `T03-SUMMARY.md`
