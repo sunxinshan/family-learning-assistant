@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 
+import pymysql
 import pytest
 from fastapi.testclient import TestClient
 from test_checkpoint_replay_unit import (
@@ -24,6 +25,7 @@ from test_checkpoint_replay_unit import (
 
 import app.modules.agent.runtime as runtime_module
 from app.core.exceptions import AppError
+from app.infrastructure.checkpoint import CheckpointerManager
 from app.main import create_app
 
 
@@ -158,3 +160,104 @@ def test_replay_log_is_traceable_and_carries_no_response_text(chat_runtime, capl
 
     # LM 的回答会把用户原文复述出来，绝不能进日志。
     assert result["replay"]["response"] not in message
+
+
+class _PingRecorder:
+    """记录 ping 的 reconnect 参数，用来证明「放弃后没有再重连」。"""
+
+    def __init__(self) -> None:
+        self.calls: list[bool] = []
+
+    def ping(self, reconnect: bool = False) -> None:
+        self.calls.append(reconnect)
+
+
+class _SaverWithConn:
+    def __init__(self, conn: _PingRecorder) -> None:
+        self.conn = conn
+
+
+class _ExplodingGraph:
+    """把「请求线程超时置位」模拟在写 checkpoint 的那一刻，再抛连接级异常。"""
+
+    def __init__(self, abandoned: threading.Event | None = None) -> None:
+        self.abandoned = abandoned
+        self.calls = 0
+
+    def invoke(self, *args, **kwargs):  # noqa: ANN002, ANN003 - 只要抛就行
+        self.calls += 1
+        if self.abandoned is not None:
+            self.abandoned.set()
+        raise pymysql.err.InterfaceError(0, "")
+
+
+def test_replay_worker_does_not_reconnect_after_abandon() -> None:
+    """超时放弃后，孤儿线程遇到 InterfaceError 不许 ping(reconnect=True)。
+
+    原实现走 `_with_checkpoint_retry`，会重连 → 被请求线程关掉的连接被「复活」，
+    再无人关闭，每次超时泄漏一条（REVIEW M-1 / AC-7 反向）。
+    """
+    abandoned = threading.Event()
+    conn = _PingRecorder()
+    graph = _ExplodingGraph(abandoned)
+
+    with pytest.raises(runtime_module._ReplayAbandoned):
+        runtime_module._invoke_replay_graph(
+            graph, _SaverWithConn(conn), "replay-abandoned", abandoned
+        )
+
+    assert graph.calls == 1, "放弃后不该重试图调用"
+    assert conn.calls == [True], f"只应有前置探活那一次 ping，实际 {conn.calls}"
+
+
+def test_replay_worker_still_retries_when_not_abandoned() -> None:
+    """没被放弃时（真实用户在跑）连接级异常仍要重连重试一次，别把正常路径改坏。"""
+    abandoned = threading.Event()
+    conn = _PingRecorder()
+    graph = _ExplodingGraph()
+
+    with pytest.raises(pymysql.err.InterfaceError):
+        runtime_module._invoke_replay_graph(graph, _SaverWithConn(conn), "replay-normal", abandoned)
+
+    assert graph.calls == 2, "非放弃态应重试一次"
+    assert conn.calls == [True, True]
+
+
+def test_timeout_hands_connection_to_orphan_thread(chat_runtime, monkeypatch) -> None:
+    """超时后连接归属：孤儿线程还在跑就不许关，它结束后必须关（T-FIX-04）。"""
+    runtime, thread_id, checkpoint_id = chat_runtime
+    created: list[CheckpointerManager] = []
+
+    class _SpyManager(CheckpointerManager):
+        def __init__(self, settings) -> None:
+            super().__init__(settings)
+            created.append(self)
+
+    monkeypatch.setattr(runtime_module, "CheckpointerManager", _SpyManager)
+    monkeypatch.setattr(runtime_module, "_REPLAY_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(runtime_module, "_REPLAY_DRAIN_SECONDS", 0.2)
+    release = threading.Event()
+
+    def _stuck_invoke(graph, saver, replay_thread, abandoned):
+        """模拟卡住的 worker：不看取消标志，就是不结束。"""
+        release.wait(timeout=10)
+        return {}
+
+    monkeypatch.setattr(runtime_module, "_invoke_replay_graph", _stuck_invoke)
+
+    with pytest.raises(AppError) as exc:
+        runtime.replay_from_checkpoint(thread_id, checkpoint_id)
+    assert exc.value.code == "replay_timeout"
+
+    manager = created[-1]
+    # 关键断言：worker 还在跑，请求线程不能关连接 —— 否则 worker 的写会触发重连复活。
+    assert manager._closed is False, "超时后请求线程提前关了仍在使用的连接"
+    assert runtime_module._ABANDONED_REPLAY_THREADS, "被放弃的重放应进登记表"
+
+    release.set()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not manager._closed:
+        time.sleep(0.02)
+
+    assert manager._closed is True, "孤儿线程结束后必须自己关连接，否则就是连接泄漏"
+    assert not runtime_module._ABANDONED_REPLAY_THREADS, "登记表要被清理干净"

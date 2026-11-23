@@ -95,6 +95,8 @@ class ReplayRunOut(CamelModel):
     route: str | None = None
     response: str | None = None
     pending_action: dict[str, Any] | None = None
+    # 重放停在 wait（等人工确认）时为 True：200 不等于「跑完了」，前端要能区分。
+    interrupted: bool = False
     token_usage: dict[str, int] | None = None
     duration_ms: int
     prompt_version: str

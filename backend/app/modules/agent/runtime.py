@@ -17,7 +17,7 @@ from app.core.config import Settings
 from app.core.database import Database
 from app.core.exceptions import AppError
 from app.core.models import new_id
-from app.infrastructure.checkpoint import CheckpointerManager
+from app.infrastructure.checkpoint import CheckpointerManager, checkpoint_not_found_error
 from app.modules.agent.executor import ToolExecutor
 from app.modules.agent.guidance import FallbackGuidanceService
 from app.modules.agent.llm import LLMAdapter
@@ -48,6 +48,19 @@ _CHECKPOINT_RETRY_ERRORS: tuple[type[BaseException], ...] = (
 
 # 调试重放的硬超时：超过就放弃等待并返回 504，避免长时间占住请求线程。
 _REPLAY_TIMEOUT_SECONDS = 60
+
+# 超时后给孤儿线程的收尾宽限：还在跑就把连接的所有权移交给它，请求线程不再 close。
+_REPLAY_DRAIN_SECONDS = 2.0
+
+# 重放会真跑图节点，凡「节点自己写业务表」的路由都不能重放。
+# 目前只有 vocabulary_import：prepare 会调 ContentService.extract()，插入
+# content_extractions 并把 material.status 改成 parsed（REVIEW C-1 / T-FIX-02）。
+_UNSAFE_REPLAY_ROUTES = frozenset({"vocabulary_import"})
+
+# 已被放弃、但线程仍在跑的重放：thread_id → 放弃时刻。只用于日志与 v2 的 TTL 清理，
+# 不是锁也不是状态机；线程结束后自行移除。
+_ABANDONED_REPLAY_THREADS: dict[str, float] = {}
+_ABANDONED_REPLAY_LOCK = threading.Lock()
 
 
 def _revive_checkpoint_connection(
@@ -87,6 +100,95 @@ def _with_checkpoint_retry[T](
         if not _revive_checkpoint_connection(checkpointer, broken=exc):
             raise
         return operation(*args, **kwargs)
+
+
+class _ReplayAbandoned(RuntimeError):
+    """重放已被放弃：worker 线程不该再重连、也不该再写。"""
+
+
+def _invoke_replay_graph[T](
+    graph: Any,
+    checkpointer: BaseCheckpointSaver,
+    replay_thread: str,
+    abandoned: threading.Event,
+) -> T:
+    """在 worker 线程里跑图；超时后被放弃时**不再** ping(reconnect=True)。
+
+    超时返回 504 后，请求线程会（或即将）关掉这条连接。若 worker 下一次
+    checkpoint 写抛 ``InterfaceError`` 就调 ``ping(reconnect=True)``，pymysql 会真的
+    重连出一条**无人关闭**的连接，每次超时泄漏一条（REVIEW M-1）。
+    这里用取消标志把「重连」这条路堵掉，让孤儿线程安静地失败退出。
+    """
+    config = {"configurable": {"thread_id": replay_thread}}
+
+    def _run() -> T:
+        if abandoned.is_set():
+            raise _ReplayAbandoned()
+        return graph.invoke(None, config)
+
+    _revive_checkpoint_connection(checkpointer)
+    try:
+        return _run()
+    except _CHECKPOINT_RETRY_ERRORS as exc:
+        if abandoned.is_set():
+            raise _ReplayAbandoned() from exc
+        if not _revive_checkpoint_connection(checkpointer, broken=exc):
+            raise
+        return _run()
+
+
+def _drain_replay_future(future: concurrent.futures.Future) -> bool:
+    """超时后再等一小会儿，看孤儿线程能不能自己收尾。
+
+    返回 True 表示线程已结束（正常或异常），此刻关连接是安全的；
+    False 表示它还在跑，连接不能由请求线程关。
+    """
+    try:
+        future.result(timeout=_REPLAY_DRAIN_SECONDS)
+    except TimeoutError:
+        return False
+    except BaseException:  # noqa: BLE001 - 线程以异常结束，同样算「已退出」
+        return True
+    return True
+
+
+def _hand_over_checkpointer(
+    future: concurrent.futures.Future,
+    replay_thread: str,
+    manager: CheckpointerManager,
+) -> None:
+    """把连接交给孤儿线程：它结束后自己关，异常与结局都进日志。
+
+    这样既不会「请求线程关掉还在用的连接 → worker 重连复活」，
+    也不会「谁都不关 → 连接永久泄漏」。
+    """
+    with _ABANDONED_REPLAY_LOCK:
+        _ABANDONED_REPLAY_THREADS[replay_thread] = time.time()
+    logger.warning(
+        "重放超时且未在 %.1fs 内收尾，连接移交给孤儿线程：replay_thread=%s",
+        _REPLAY_DRAIN_SECONDS,
+        replay_thread,
+    )
+
+    def _finalize(completed: concurrent.futures.Future) -> None:
+        with _ABANDONED_REPLAY_LOCK:
+            _ABANDONED_REPLAY_THREADS.pop(replay_thread, None)
+        error = completed.exception()
+        if error is None:
+            logger.warning("重放孤儿线程已结束：replay_thread=%s", replay_thread)
+        else:
+            logger.error(
+                "重放孤儿线程异常结束：replay_thread=%s error=%r",
+                replay_thread,
+                error,
+                exc_info=error,
+            )
+        try:
+            manager.close()
+        except Exception:  # noqa: BLE001 - 收尾阶段不再抛给任何人
+            logger.warning("重放孤儿线程关闭 checkpoint 连接失败", exc_info=True)
+
+    future.add_done_callback(_finalize)
 
 
 def _now() -> datetime:
@@ -855,10 +957,21 @@ class AgentRuntime:
            持有，重放抢锁会让真实用户排队，而他们的执行租约只有 2 分钟，排队就会过期。
 
         锚点由本方法自己解析（父快照的 next），不从外部传入 —— 见下方注释。
+
+        第三条约束（T-FIX-02）：重放会**真跑**图节点，所以「节点自己写业务表」的路由
+        一律拒绝（``_UNSAFE_REPLAY_ROUTES``，目前是 vocabulary_import）：
+        它的 prepare 会解析文件、插入 content_extractions 并改 material.status，
+        AC-3「不写业务表」在这条路由上结构性地做不到 —— 明确 409，而不是假装修好了。
         """
         started = time.perf_counter()
         prompt_version = f"{self.prompt.version}:{self.prompt.content_hash[:12]}"
-        with CheckpointerManager(self.settings) as saver:
+        # 不用 with：超时后连接不能由请求线程关（T-FIX-04），改由 close() 幂等收尾，
+        # 必要时把所有权移交给孤儿线程。
+        manager = CheckpointerManager(self.settings)
+        saver = manager.__enter__()
+        abandoned = threading.Event()
+        deferred_close = False
+        try:
             graph = build_agent_graph(
                 saver, self.llm, self.business, self.guidance, self.tool_workflow
             )
@@ -872,7 +985,7 @@ class AgentRuntime:
             # 真实入口 checkpoint 的 values 也是 {}（输入存在 pending writes 里），
             # 所以不能用 `not src.values` 判存在，否则会把「存在的入口」误报成 404。
             if src.created_at is None:
-                raise AppError("checkpoint_not_found", "Checkpoint 不存在", status_code=404)
+                raise checkpoint_not_found_error()
             if any(task.interrupts for task in src.tasks):
                 raise AppError(
                     "checkpoint_interrupted", "Checkpoint 存在未解决的确认中断", status_code=409
@@ -900,6 +1013,18 @@ class AgentRuntime:
                 )
             anchor = parent.next[0]
 
+            # T-FIX-02：该路由的 prepare 有业务写，重放不安全 → 先拒绝，不跑图。
+            # 取值来源是 state 里的 route（classify 写入，之后沿链继承），
+            # 父快照兜底覆盖「本快照 values 里还没有 route」的入口形态。
+            replay_route_guard = src.values.get("route") or parent.values.get("route")
+            if replay_route_guard in _UNSAFE_REPLAY_ROUTES:
+                raise AppError(
+                    "replay_unsupported_route",
+                    f"{replay_route_guard} 路由的 prepare 会产生解析产物"
+                    "（写 content_extractions 并改 material.status），重放不安全",
+                    status_code=409,
+                )
+
             # 重放跑在新 thread：同 thread 指定 checkpoint_id 会在原链 fork 出新分支，
             # 用户下次打开对话 get_state(thread_id) 就会看到调试结果（ADR-017）。
             new_tid = f"replay-{uuid.uuid4()}"
@@ -917,15 +1042,11 @@ class AgentRuntime:
                 max_workers=1, thread_name_prefix=f"replay-{new_tid}"
             )
             try:
-                future = executor.submit(
-                    _with_checkpoint_retry,
-                    saver,
-                    graph.invoke,
-                    None,
-                    {"configurable": {"thread_id": new_tid}},
-                )
+                future = executor.submit(_invoke_replay_graph, graph, saver, new_tid, abandoned)
                 future.result(timeout=_REPLAY_TIMEOUT_SECONDS)
             except TimeoutError as exc:
+                # 先置取消标志：孤儿线程此后不再 ping(reconnect=True) 把连接复活（T-FIX-04）。
+                abandoned.set()
                 logger.warning(
                     "agent checkpoint replay timeout source_thread=%s source_checkpoint=%s "
                     "replay_thread=%s timeout=%ss",
@@ -934,15 +1055,23 @@ class AgentRuntime:
                     new_tid,
                     _REPLAY_TIMEOUT_SECONDS,
                 )
+                # 已置取消标志的孤儿线程不会再写成功：它要么很快结束（连接交给外层 finally 关），
+                # 要么还在跑（连接移交给它，它结束时自己关）。
+                if not _drain_replay_future(future):
+                    deferred_close = True
+                    _hand_over_checkpointer(future, new_tid, manager)
                 raise AppError("replay_timeout", "重放超时，请稍后重试", status_code=504) from exc
             finally:
                 # 不能用 with：__exit__ 会 shutdown(wait=True)，超时形同虚设一直阻塞。
                 # 线程无法 kill，只能 wait=False 让它自生自灭；日志已留 replay_thread 供清理。
                 executor.shutdown(wait=False, cancel_futures=True)
 
-            out = _with_checkpoint_retry(
+            final = _with_checkpoint_retry(
                 saver, graph.get_state, {"configurable": {"thread_id": new_tid}}
-            ).values
+            )
+            out = final.values
+            # 停在 wait（等人工确认）也是 200，但必须让调用方看得出「没跑完」（T-FIX-05）。
+            replay_interrupted = bool(final.next) or any(task.interrupts for task in final.tasks)
             # update_state 会把原 checkpoint 的 usage 继承过来，这里只回传本次增量。
             out_usage = out.get("token_usage") or {}
             delta = {
@@ -950,9 +1079,20 @@ class AgentRuntime:
                 for key in out_usage
             }
             token_usage = delta if any(delta.values()) else None
-            checkpoint_rows_added = len(
-                list(graph.get_state_history({"configurable": {"thread_id": new_tid}}))
+            checkpoint_rows_added = sum(
+                1
+                for _ in _with_checkpoint_retry(
+                    saver,
+                    lambda: list(graph.get_state_history({"configurable": {"thread_id": new_tid}})),
+                )
             )
+        finally:
+            # 只在「孤儿线程已结束」时由请求线程关连接；已移交的情况由孤儿线程自己关。
+            if not deferred_close:
+                try:
+                    manager.close()
+                except Exception:  # noqa: BLE001 - 收尾失败不能覆盖真正的错误
+                    logger.warning("重放 checkpoint 连接关闭失败", exc_info=True)
 
         source_prompt_version: str | None = None
         run_id = src.values.get("run_id")
@@ -993,6 +1133,7 @@ class AgentRuntime:
                 "route": replay_route,
                 "response": replay_response,
                 "pending_action": replay_pending,
+                "interrupted": replay_interrupted,
                 "token_usage": token_usage,
                 "duration_ms": duration_ms,
                 "prompt_version": prompt_version,

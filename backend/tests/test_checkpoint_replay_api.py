@@ -160,6 +160,8 @@ def test_replay_returns_200_with_camel_case_contract(replay_api: dict) -> None:
     assert replay["checkpointRowsAdded"] >= 1
     assert replay["response"]
     assert replay["model"]
+    # chat 跑到 END：200 且真的跑完了（T-FIX-05 的负例）。
+    assert replay["interrupted"] is False
 
     # 前端契约：一律 camelCase，不能混入 snake_case。
     assert "promptVersion" in replay
@@ -210,21 +212,49 @@ def test_replay_requires_admin(replay_api: dict) -> None:
 
 
 def test_replay_degrades_when_checkpoint_store_missing(replay_api: dict, tmp_path: Path) -> None:
-    """AC-6：checkpoint 库指向不存在的路径 → 404/503，绝不 500，不泄露 Traceback。"""
-    degraded_settings = replay_api["settings"].model_copy(
-        update={"checkpoint_sqlite_path": str(tmp_path / "absent-store" / "checkpoints.db")}
-    )
-    degraded_app = create_app(degraded_settings, llm=FakeLLM())
+    """AC-6：checkpoint 库不可用 → 503 checkpoint_store_unavailable，绝不 404/500。
+
+    「库读不了」和「记录不存在」必须是两个码：前者返回 404 会让管理员以为数据丢了（REVIEW C-2）。
+
+    注意 app 启动时会把 checkpoint 库建出来（saver.setup()），所以不能靠换路径让「库不存在」；
+    这里在启动后把管理端看到的库地址改成不存在的路径，才是真正的「库掉线」。
+    """
+    degraded_app = create_app(replay_api["settings"], llm=FakeLLM())
     with TestClient(degraded_app) as degraded_client:
+        degraded_app.state.settings = replay_api["settings"].model_copy(
+            update={"checkpoint_sqlite_path": str(tmp_path / "absent-store" / "checkpoints.db")}
+        )
         response = degraded_client.post(
             _replay_url(replay_api["thread_id"], replay_api["checkpoint_id"]),
             headers=_auth(replay_api["admin_token"]),
         )
 
-    assert response.status_code in {404, 503}, response.text
-    assert response.status_code != 500
+    assert response.status_code == 503, response.text
+    assert response.json()["error"]["code"] == "checkpoint_store_unavailable"
     assert "Traceback" not in response.text
-    assert response.json()["error"]["code"]
+
+
+def test_replay_failure_is_audited(replay_api: dict) -> None:
+    """T-FIX-03：失败的重放也要在 admin 操作日志里留痕（带结果码）。
+
+    请求异常会让 `get_session` 回滚，所以失败日志必须自己 commit —— 本用例
+    换一个新的 HTTP 请求去查，正是为了证明它真的落库了。
+    """
+    client = replay_api["client"]
+    admin = _auth(replay_api["admin_token"])
+    terminal_id = _terminal_checkpoint(_history(client, replay_api["thread_id"]))
+
+    response = client.post(_replay_url(replay_api["thread_id"], terminal_id), headers=admin)
+    assert response.status_code == 409, response.text
+
+    logs = client.get("/api/v1/admin/logs", headers=admin)
+    assert logs.status_code == 200, logs.text
+    entries = [item for item in logs.json() if item["targetId"] == terminal_id]
+    assert entries, "失败的重放没有留痕"
+
+    failed = [item for item in entries if item["result"] == "failure"]
+    assert failed, f"应有 result=failure 的日志，实际 {entries}"
+    assert failed[0]["action"] == "重放 checkpoint 失败"
 
 
 def test_replay_keeps_thread_checkpoint_total_unchanged(replay_api: dict) -> None:

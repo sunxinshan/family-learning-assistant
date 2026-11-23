@@ -18,7 +18,9 @@ from app.core.exceptions import AppError
 from app.main import create_app
 from app.modules.agent.models import AgentRun, AgentRunEvent
 from app.modules.agent.runtime import AgentRuntime
+from app.modules.content.models import ContentExtraction
 from app.modules.conversation.models import ConversationMessage
+from app.modules.material.models import Material
 from app.modules.task.models import LearningTask
 
 
@@ -130,7 +132,12 @@ def _replayable_checkpoint(history: list) -> str:
     raise AssertionError("没有找到可重放的 checkpoint")
 
 
-def _business_counts(runtime: AgentRuntime) -> dict[str, int]:
+def _business_counts(runtime: AgentRuntime) -> dict[str, object]:
+    """业务表指纹：计数 + 材料状态。
+
+    只看计数不够 —— ``ContentService.extract`` 的副作用之一是
+    ``material.status = "parsed"``，行数不变但状态变了（REVIEW C-1）。
+    """
     with runtime.database.session() as session:
         return {
             "conversation_messages": session.scalar(
@@ -139,7 +146,24 @@ def _business_counts(runtime: AgentRuntime) -> dict[str, int]:
             "agent_runs": session.scalar(select(func.count()).select_from(AgentRun)),
             "agent_run_events": session.scalar(select(func.count()).select_from(AgentRunEvent)),
             "tasks": session.scalar(select(func.count()).select_from(LearningTask)),
+            "content_extractions": session.scalar(
+                select(func.count()).select_from(ContentExtraction)
+            ),
+            "materials": tuple(
+                session.execute(select(Material.id, Material.status).order_by(Material.id)).all()
+            ),
         }
+
+
+def _snapshot_with_next(history: list, node: str, route: str | None = None) -> str:
+    """取 ``next == (node,)`` 的快照 id，可按 state 里的 route 再筛一层。"""
+    for snapshot in history:
+        if snapshot.next != (node,):
+            continue
+        if route is not None and snapshot.values.get("route") != route:
+            continue
+        return snapshot.config["configurable"]["checkpoint_id"]
+    raise AssertionError(f"没有找到 next={node} route={route} 的 checkpoint")
 
 
 @pytest.fixture
@@ -310,3 +334,66 @@ def test_replay_rejects_entry_checkpoint_without_parent(settings: Settings) -> N
 
         assert exc.value.code == "checkpoint_terminal"
         assert exc.value.status_code == 409
+
+
+def test_replay_writes_nothing_on_task_create_route(settings: Settings) -> None:
+    """AC-3 跨路由：task_create（tool_calling 关闭，走 prepare）重放也不许写业务表。
+
+    之前 AC-3 只在 chat 路由上验过，而 chat 的 respond 本来就不写库，
+    等于用一条不会失败的用例证明「无副作用」（REVIEW C-1）。
+    这里挑 next=('prepare',) 的快照：重放会真的再跑一次 prepare，才验得到副作用。
+    """
+    fake = FakeLLM(route="task_create")
+    app = create_app(settings, llm=fake)
+    with TestClient(app) as client:
+        runtime = app.state.agent_runtime
+        token = _register(client, "ReplayTaskCreate")
+        _create_library(client, token, "任务词库")
+        _, thread_id = _start_run(client, token, "用任务词库创建听写任务")
+
+        checkpoint_id = _snapshot_with_next(
+            _history(runtime, thread_id), "prepare", route="task_create"
+        )
+        before = _business_counts(runtime)
+
+        result = runtime.replay_from_checkpoint(thread_id, checkpoint_id)
+
+        assert _business_counts(runtime) == before, "重放 prepare 写了业务表"
+        # task_create 的终点是 wait（等人工确认）：200 但没跑完，必须标出来（T-FIX-05）。
+        assert result["replay"]["interrupted"] is True
+        assert result["replay"]["pending_action"] is not None
+
+
+def test_replay_rejects_vocabulary_import_route(settings: Settings) -> None:
+    """AC-3：vocabulary_import 的 prepare 会解析文件并落库，重放必须 409（T-FIX-02 remedy ①）。"""
+    fake = FakeLLM(route="vocabulary_import")
+    app = create_app(settings, llm=fake)
+    with TestClient(app) as client:
+        runtime = app.state.agent_runtime
+        token = _register(client, "ReplayImport")
+        _, thread_id = _start_run(client, token, "导入这个单词表文件")
+
+        checkpoint_id = _snapshot_with_next(
+            _history(runtime, thread_id), "prepare", route="vocabulary_import"
+        )
+        before = _business_counts(runtime)
+
+        with pytest.raises(AppError) as exc:
+            runtime.replay_from_checkpoint(thread_id, checkpoint_id)
+
+        assert exc.value.code == "replay_unsupported_route"
+        assert exc.value.status_code == 409
+        assert "content_extractions" in exc.value.message
+        assert _business_counts(runtime) == before, "被拒绝的重放不该有任何写入"
+
+
+def test_replay_marks_chat_route_as_not_interrupted(
+    chat_setup: tuple[TestClient, AgentRuntime, FakeLLM, str, str],
+) -> None:
+    """chat 路由跑到 END，interrupted 必须是 False（否则前端会一直提示「未完成」）。"""
+    _, runtime, _, _, thread_id = chat_setup
+    checkpoint_id = _replayable_checkpoint(_history(runtime, thread_id))
+
+    result = runtime.replay_from_checkpoint(thread_id, checkpoint_id)
+
+    assert result["replay"]["interrupted"] is False

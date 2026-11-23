@@ -5,6 +5,15 @@ checkpoint 数据存放在独立的库（本地 SQLite / 生产 MySQL），与�
 
 列表页不解析 checkpoint BLOB，只取元信息；详情页才反序列化 channel_values，
 避免一次拉取几十条大对象。返回给管理端前统一走 redact() 脱敏。
+
+方言约定（T-FIX-03）：同一个 checkpoint 库被两套代码访问 ——
+LangGraph 的 saver 和这里的管理端查询。两边的表名/列名/驱动名**不同**：
+
+- sqlite：``writes(value)``，驱动 ``sqlite:///``
+- mysql：``checkpoint_writes(blob)``，驱动必须是 ``mysql+pymysql://``
+  （``mysql://`` 会让 SQLAlchemy 去找未安装的 MySQLdb）
+
+所以表名与值列一律走 ``_writes_table()`` / ``_writes_query()``，禁止再硬编码。
 """
 
 from __future__ import annotations
@@ -17,10 +26,10 @@ from typing import Any
 
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.engine import Engine, make_url
 
 from app.core.config import Settings
+from app.infrastructure.checkpoint import checkpoint_store_unavailable_error
 from app.modules.agent.redaction import redact
 
 logger = logging.getLogger(__name__)
@@ -29,6 +38,19 @@ _EMPTY: dict[str, Any] = {"items": [], "total": 0, "threads": []}
 
 # 这些键名字里带 token，但只是用量统计，不含任何凭证；调试时恰恰需要看到。
 _VISIBLE_SECRET_LIKE_KEYS = frozenset({"token_usage", "token_count"})
+
+
+def _normalize_mysql_url(url: str) -> str:
+    """``mysql://`` → ``mysql+pymysql://``。
+
+    LangGraph 的 ``PyMySQLSaver`` 自己用 ``urlparse`` 解连接串，认不认驱动名都无所谓；
+    但同一个串交给 SQLAlchemy 时，``mysql://`` 会去加载默认 DBAPI ``MySQLdb``（未安装），
+    直接 ``ModuleNotFoundError``。两边共用一份配置，所以在这里统一改写。
+    """
+    parsed = make_url(url)
+    if parsed.drivername != "mysql+pymysql":
+        parsed = parsed.set(drivername="mysql+pymysql")
+    return parsed.render_as_string(hide_password=False)
 
 
 @lru_cache(maxsize=4)
@@ -45,13 +67,45 @@ class CheckpointRepository:
     def _url(self) -> str | None:
         """checkpoint 库地址；SQLite 文件不存在时返回 None（不创建文件）。"""
         if self.settings.checkpoint_backend == "mysql":
-            return self.settings.checkpoint_url or None
+            raw = self.settings.checkpoint_url
+            if not raw:
+                return None
+            try:
+                return _normalize_mysql_url(raw)
+            except Exception:
+                logger.exception("checkpoint url 无法解析为 SQLAlchemy 连接串")
+                return None
         path = Path(self.settings.checkpoint_sqlite_path).expanduser()
         if not path.is_absolute():
             path = Path.cwd() / path
         if not path.exists():
             return None
         return f"sqlite:///{path}"
+
+    def _engine(self, url: str) -> Engine:
+        """建引擎；驱动缺失等非 SQLAlchemy 异常统一折成 503，别穿成 500。"""
+        try:
+            return _engine_for(url)
+        except Exception:
+            logger.exception("checkpoint 引擎创建失败 backend=%s", self.settings.checkpoint_backend)
+            raise checkpoint_store_unavailable_error() from None
+
+    def _writes_table(self) -> str:
+        """writes 表名：sqlite 是 ``writes``，MySQL saver 是 ``checkpoint_writes``。"""
+        return "checkpoint_writes" if self.settings.checkpoint_backend == "mysql" else "writes"
+
+    def _writes_query(self) -> str:
+        """详情页取值 SQL：sqlite 列名 ``value``，MySQL 列名是反引号包住的关键字 ``blob``。
+
+        统一 ``as value``，让上层反序列化代码不必关心后端。
+        """
+        value_column = "`blob`" if self.settings.checkpoint_backend == "mysql" else "value"
+        return (
+            f"select task_id, idx, channel, type, {value_column} as value "
+            f"from {self._writes_table()} "
+            "where thread_id = :thread_id and checkpoint_id = :checkpoint_id "
+            "order by task_id, idx"
+        )
 
     # --- 反序列化 ---------------------------------------------------------
     def _metadata(self, raw: Any) -> dict[str, Any]:
@@ -80,7 +134,7 @@ class CheckpointRepository:
         if url is None:
             return []
         try:
-            with _engine_for(url).connect() as conn:
+            with self._engine(url).connect() as conn:
                 rows = (
                     conn.execute(
                         text(
@@ -108,8 +162,8 @@ class CheckpointRepository:
                     .mappings()
                     .all()
                 )
-        except SQLAlchemyError:
-            logger.warning("checkpoint threads query failed", exc_info=True)
+        except Exception:  # noqa: BLE001 - 列表页是尽力展示，降级为空 + 留痕，不 500
+            logger.exception("checkpoint threads query failed")
             return []
         steps = {
             row["thread_id"]: self._metadata(row["metadata"]).get("step") for row in latest_rows
@@ -135,7 +189,7 @@ class CheckpointRepository:
             params["thread_id"] = thread_id
             count_params["thread_id"] = thread_id
         try:
-            with _engine_for(url).connect() as conn:
+            with self._engine(url).connect() as conn:
                 total = conn.execute(
                     text(f"select count(*) from checkpoints {where}"), count_params
                 ).scalar_one()
@@ -153,8 +207,8 @@ class CheckpointRepository:
                     .mappings()
                     .all()
                 )
-        except SQLAlchemyError:
-            logger.warning("checkpoint list query failed", exc_info=True)
+        except Exception:  # noqa: BLE001 - 同上：列表页降级为空，不 500
+            logger.exception("checkpoint list query failed")
             return dict(_EMPTY)
         items = []
         for row in rows:
@@ -173,11 +227,17 @@ class CheckpointRepository:
         return {"items": items, "total": int(total), "threads": self.list_threads()}
 
     def get(self, thread_id: str, checkpoint_id: str) -> dict[str, Any] | None:
+        """详情；**只**在「这条记录不存在」时返回 None。
+
+        库连不上、表名/驱动不对都抛 503 ``checkpoint_store_unavailable``：
+        重放端点拿它做存在性预检，若把「读不了」折成 None，管理员会看到
+        「Checkpoint 不存在」而以为数据丢了（REVIEW C-2）。
+        """
         url = self._url()
         if url is None:
-            return None
+            raise checkpoint_store_unavailable_error()
         try:
-            with _engine_for(url).connect() as conn:
+            with self._engine(url).connect() as conn:
                 row = (
                     conn.execute(
                         text(
@@ -195,19 +255,20 @@ class CheckpointRepository:
                     return None
                 write_rows = (
                     conn.execute(
-                        text(
-                            "select task_id, idx, channel, type, value from writes "
-                            "where thread_id = :thread_id and checkpoint_id = :checkpoint_id "
-                            "order by task_id, idx"
-                        ),
+                        text(self._writes_query()),
                         {"thread_id": thread_id, "checkpoint_id": checkpoint_id},
                     )
                     .mappings()
                     .all()
                 )
-        except SQLAlchemyError:
-            logger.warning("checkpoint detail query failed", exc_info=True)
-            return None
+        except Exception:
+            logger.exception(
+                "checkpoint detail query failed thread_id=%s checkpoint_id=%s backend=%s",
+                thread_id,
+                checkpoint_id,
+                self.settings.checkpoint_backend,
+            )
+            raise checkpoint_store_unavailable_error() from None
 
         payload = self._decode(row["type"], row["checkpoint"]) or {}
         channel_values = payload.get("channel_values")
@@ -237,6 +298,8 @@ class CheckpointRepository:
         }
 
     # --- 节点反查 / 统计 ---------------------------------------------------
+    # v2: 尚无调用方（T04 修正 2 后重放链路不再用它做锚点；留给 v2 管理页诊断）。
+    # 保留下来的前提是方言必须与 get() 一致，否则 MySQL 后端下会静默返回错误结果。
     def routing_target(self, thread_id: str, checkpoint_id: str) -> str | None:
         """反查某个 checkpoint 上 ``branch:to:<node>`` 写入指向的**下一跳**节点。
 
@@ -257,24 +320,24 @@ class CheckpointRepository:
         if url is None:
             return None
         try:
-            with _engine_for(url).connect() as conn:
+            with self._engine(url).connect() as conn:
                 channels = [
                     str(row[0])
                     for row in conn.execute(
                         text(
-                            "select channel from writes "
+                            f"select channel from {self._writes_table()} "
                             "where thread_id = :thread_id and checkpoint_id = :checkpoint_id "
                             "and channel like 'branch:to:%'"
                         ),
                         {"thread_id": thread_id, "checkpoint_id": checkpoint_id},
                     )
                 ]
-        except SQLAlchemyError:
-            logger.warning(
-                "checkpoint producing node query failed thread_id=%s checkpoint_id=%s",
+        except Exception:  # noqa: BLE001 - 诊断辅助方法：降级为 None + 留痕
+            logger.exception(
+                "checkpoint producing node query failed thread_id=%s checkpoint_id=%s backend=%s",
                 thread_id,
                 checkpoint_id,
-                exc_info=True,
+                self.settings.checkpoint_backend,
             )
             return None
         if len(channels) != 1:
@@ -295,14 +358,16 @@ class CheckpointRepository:
         if url is None:
             return 0
         try:
-            with _engine_for(url).connect() as conn:
+            with self._engine(url).connect() as conn:
                 total = conn.execute(
                     text("select count(*) from checkpoints where thread_id = :thread_id"),
                     {"thread_id": thread_id},
                 ).scalar_one()
-        except SQLAlchemyError:
-            logger.warning(
-                "checkpoint thread count query failed thread_id=%s", thread_id, exc_info=True
+        except Exception:  # noqa: BLE001 - 同上：诊断辅助方法降级为 0
+            logger.exception(
+                "checkpoint thread count query failed thread_id=%s backend=%s",
+                thread_id,
+                self.settings.checkpoint_backend,
             )
             return 0
         return int(total)
